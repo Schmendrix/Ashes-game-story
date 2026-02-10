@@ -82,6 +82,43 @@
       margin-right: 0.35rem;
       accent-color: #7aa2f7;
     }
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1.25rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .chart-legend .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .chart-legend .swatch {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .chart-legend .swatch-line {
+      width: 20px;
+      height: 3px;
+      border-radius: 2px;
+    }
+    .chart-legend .swatch-line-dashed {
+      width: 20px;
+      height: 0;
+      border-top: 3px dashed;
+      border-radius: 0;
+    }
+    .chart-legend .legend-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      align-self: center;
+    }
     .chart-container {
       background: var(--surface);
       border-radius: 12px;
@@ -163,6 +200,7 @@
       <label class="layer-cb"><input type="checkbox" id="layerBattlefield"> Battlefield value</label>
       <span id="diceNaNote" class="dice-na hidden"></span>
     </div>
+    <div id="chartLegend" class="chart-legend"></div>
     <div class="chart-container">
       <canvas id="mainChart"></canvas>
     </div>
@@ -535,6 +573,64 @@
           }
         }
 
+        // Compute strategic state per turn for each player
+        // States: active-dominance, resource-dominance, aggro-control, board-control,
+        //         direct-aggression, holding-back, desperate-aggro, under-siege
+        var stateColors = {
+          'active-dominance': '#ff9e64',
+          'resource-dominance': '#9ece6a',
+          'aggro-control': '#e0af68',
+          'board-control': '#7dcfff',
+          'direct-aggression': '#f7768e',
+          'holding-back': '#565f89',
+          'desperate-aggro': '#ff7a93',
+          'under-siege': '#414868'
+        };
+        var stateLabels = {
+          'active-dominance': 'Active dominance',
+          'resource-dominance': 'Resource dominance',
+          'aggro-control': 'Aggro control',
+          'board-control': 'Board control',
+          'direct-aggression': 'Direct aggression',
+          'holding-back': 'Holding back',
+          'desperate-aggro': 'Desperate aggro',
+          'under-siege': 'Under siege'
+        };
+
+        var strategy1 = [];
+        var strategy2 = [];
+        for (var si = 0; si < labels.length; si++) {
+          // Dealing damage = opponent health dropped since last turn
+          var p1DealtDmg = si > 0 && health2[si] < health2[si - 1];
+          var p2DealtDmg = si > 0 && health1[si] < health1[si - 1];
+          var da = diceAdv[si]; // positive = p1 advantage
+          var ba = bfValueAdv[si]; // positive = p1 advantage
+
+          // P1 perspective
+          var p1Dice = da > 0;
+          var p1Bf = ba > 0;
+          if (p1Dice && p1Bf && p1DealtDmg) strategy1.push('active-dominance');
+          else if (p1Dice && p1Bf && !p1DealtDmg) strategy1.push('resource-dominance');
+          else if (!p1Dice && p1Bf && p1DealtDmg) strategy1.push('aggro-control');
+          else if (!p1Dice && p1Bf && !p1DealtDmg) strategy1.push('board-control');
+          else if (p1Dice && !p1Bf && p1DealtDmg) strategy1.push('direct-aggression');
+          else if (p1Dice && !p1Bf && !p1DealtDmg) strategy1.push('holding-back');
+          else if (!p1Dice && !p1Bf && p1DealtDmg) strategy1.push('desperate-aggro');
+          else strategy1.push('under-siege');
+
+          // P2 perspective (mirror)
+          var p2Dice = da < 0;
+          var p2Bf = ba < 0;
+          if (p2Dice && p2Bf && p2DealtDmg) strategy2.push('active-dominance');
+          else if (p2Dice && p2Bf && !p2DealtDmg) strategy2.push('resource-dominance');
+          else if (!p2Dice && p2Bf && p2DealtDmg) strategy2.push('aggro-control');
+          else if (!p2Dice && p2Bf && !p2DealtDmg) strategy2.push('board-control');
+          else if (p2Dice && !p2Bf && p2DealtDmg) strategy2.push('direct-aggression');
+          else if (p2Dice && !p2Bf && !p2DealtDmg) strategy2.push('holding-back');
+          else if (!p2Dice && !p2Bf && p2DealtDmg) strategy2.push('desperate-aggro');
+          else strategy2.push('under-siege');
+        }
+
         return {
           labels: labels,
           diceAdvantage: diceAdv,
@@ -545,7 +641,11 @@
           attackUnits: attackUnits,
           bfValue1: bfValue1,
           bfValue2: bfValue2,
-          bfValueAdv: bfValueAdv
+          bfValueAdv: bfValueAdv,
+          strategy1: strategy1,
+          strategy2: strategy2,
+          stateColors: stateColors,
+          stateLabels: stateLabels
         };
       }
 
@@ -704,13 +804,14 @@
           });
         }
 
-        // If nothing checked, show a message
+        // If nothing checked, clear and return
         if (datasets.length === 0) {
           if (chart) chart = null;
+          document.getElementById('chartLegend').innerHTML = '';
           return;
         }
 
-        // Build tooltip callback
+        // Build tooltip callbacks
         var tooltipAfterLabel = function (ctx) {
           var ds = ctx.dataset;
           if (ds.label && ds.label.indexOf('Dice advantage') === 0) {
@@ -737,6 +838,130 @@
           }
           return '';
         };
+        var tooltipFooter = function (items) {
+          if (!items.length) return '';
+          var idx = items[0].dataIndex;
+          var s1 = series.strategy1[idx];
+          var s2 = series.strategy2[idx];
+          return pb1 + ': ' + series.stateLabels[s1] + '\n' + pb2 + ': ' + series.stateLabels[s2];
+        };
+
+        // Plugin: alternating round backgrounds
+        var roundBandsPlugin = {
+          id: 'roundBands',
+          beforeDraw: function (chart) {
+            var ctx = chart.ctx;
+            var xScale = chart.scales.x;
+            var yTop = chart.chartArea.top;
+            var yBottom = chart.chartArea.bottom;
+            var labels = chart.data.labels;
+            if (!labels || labels.length === 0) return;
+
+            // Group label indices by round number
+            var rounds = [];
+            var currentRound = null;
+            var startIdx = 0;
+            for (var ri = 0; ri < labels.length; ri++) {
+              var m = labels[ri].match(/^R(\d+)/);
+              var rn = m ? m[1] : currentRound;
+              if (rn !== currentRound) {
+                if (currentRound !== null) {
+                  rounds.push({ round: parseInt(currentRound, 10), start: startIdx, end: ri - 1 });
+                }
+                currentRound = rn;
+                startIdx = ri;
+              }
+            }
+            if (currentRound !== null) {
+              rounds.push({ round: parseInt(currentRound, 10), start: startIdx, end: labels.length - 1 });
+            }
+
+            // Draw bands for even rounds
+            ctx.save();
+            for (var bi = 0; bi < rounds.length; bi++) {
+              if (rounds[bi].round % 2 === 0) {
+                var x1 = xScale.getPixelForValue(rounds[bi].start) - (xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) / 2;
+                var x2 = xScale.getPixelForValue(rounds[bi].end) + (xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) / 2;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+                ctx.fillRect(x1, yTop, x2 - x1, yBottom - yTop);
+              }
+            }
+            ctx.restore();
+          }
+        };
+
+        // Plugin: strategy strip below chart
+        var strategyStripPlugin = {
+          id: 'strategyStrip',
+          afterDraw: function (chart) {
+            if (!series.strategy1 || !series.strategy2) return;
+            var ctx = chart.ctx;
+            var xScale = chart.scales.x;
+            var bottom = chart.chartArea.bottom;
+            var labels = chart.data.labels;
+            if (!labels || labels.length < 2) return;
+            var halfStep = (xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) / 2;
+            var stripH = 8;
+            var gap = 2;
+
+            ctx.save();
+            // P1 strip
+            for (var si = 0; si < labels.length; si++) {
+              var x = xScale.getPixelForValue(si) - halfStep;
+              var w = halfStep * 2;
+              ctx.fillStyle = series.stateColors[series.strategy1[si]] || '#414868';
+              ctx.fillRect(x, bottom + 4, w, stripH);
+            }
+            // P2 strip
+            for (var si = 0; si < labels.length; si++) {
+              var x = xScale.getPixelForValue(si) - halfStep;
+              var w = halfStep * 2;
+              ctx.fillStyle = series.stateColors[series.strategy2[si]] || '#414868';
+              ctx.fillRect(x, bottom + 4 + stripH + gap, w, stripH);
+            }
+            // Labels
+            ctx.fillStyle = '#565f89';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(pb1, xScale.getPixelForValue(0) - halfStep - 4, bottom + 4 + stripH - 1);
+            ctx.fillText(pb2, xScale.getPixelForValue(0) - halfStep - 4, bottom + 4 + stripH + gap + stripH - 1);
+            ctx.restore();
+          }
+        };
+
+        // Build custom HTML legend
+        var legendBox = document.getElementById('chartLegend');
+        var legendHtml = '';
+        function swatch(color, type) {
+          if (type === 'line') return '<span class="swatch swatch-line" style="background:' + color + '"></span>';
+          if (type === 'dashed') return '<span class="swatch swatch-line-dashed" style="border-color:' + color + '"></span>';
+          return '<span class="swatch" style="background:' + color + '"></span>';
+        }
+        if (showHealth) {
+          legendHtml += '<span class="legend-item">' + swatch('#7aa2f7', 'line') + pb1 + ' health</span>';
+          legendHtml += '<span class="legend-item">' + swatch('#bb9af7', 'line') + pb2 + ' health</span>';
+        }
+        if (showBf) {
+          legendHtml += '<span class="legend-item">' + swatch('#7aa2f7', 'dashed') + pb1 + ' battlefield</span>';
+          legendHtml += '<span class="legend-item">' + swatch('#bb9af7', 'dashed') + pb2 + ' battlefield</span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(255, 158, 100, 0.6)') + pb1 + ' BF advantage</span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(125, 207, 255, 0.6)') + pb2 + ' BF advantage</span>';
+        }
+        if (showDice) {
+          legendHtml += '<span class="legend-item">' + swatch('rgba(158, 206, 106, 0.7)') + pb1 + ' dice advantage</span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(247, 118, 142, 0.7)') + pb2 + ' dice advantage</span>';
+        }
+        if (showAttacks) {
+          legendHtml += '<span class="legend-item">' + swatch('#7aa2f7') + pb1 + ' attacks</span>';
+          legendHtml += '<span class="legend-item">' + swatch('#bb9af7') + pb2 + ' attacks</span>';
+        }
+        // Strategy strip legend
+        legendHtml += '<span class="legend-sep"></span>';
+        var stKeys = Object.keys(series.stateLabels);
+        for (var sk = 0; sk < stKeys.length; sk++) {
+          legendHtml += '<span class="legend-item">' + swatch(series.stateColors[stKeys[sk]]) + series.stateLabels[stKeys[sk]] + '</span>';
+        }
+        legendBox.innerHTML = legendHtml;
 
         chart = new Chart(canvas, {
           type: 'bar',
@@ -744,12 +969,19 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: { padding: { bottom: 28 } },
             plugins: {
-              legend: { display: true, labels: { color: '#565f89' } },
-              tooltip: { callbacks: { afterLabel: tooltipAfterLabel } }
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  afterLabel: tooltipAfterLabel,
+                  footer: tooltipFooter
+                }
+              }
             },
             scales: scales
-          }
+          },
+          plugins: [roundBandsPlugin, strategyStripPlugin]
         });
       }
 
