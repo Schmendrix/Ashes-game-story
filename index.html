@@ -173,8 +173,129 @@
       font-size: 0.95rem;
       color: var(--text);
     }
+    .narrative-section {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .narrative-heading {
+      font-size: 1.1rem;
+      color: var(--text);
+      margin: 0 0 0.75rem;
+    }
+    .narrative-content {
+      font-size: 0.88rem;
+      line-height: 1.65;
+      color: #a9b1d6;
+    }
+    .narrative-content .narr-round {
+      margin-bottom: 0.75rem;
+    }
+    .narrative-content .narr-round-header {
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.25rem;
+    }
+    .narrative-content .narr-turn {
+      margin-left: 1rem;
+      margin-bottom: 0.3rem;
+    }
+    .narrative-content .narr-state {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .narrative-content .narr-result {
+      font-weight: 600;
+      color: var(--accent2);
+      margin-top: 0.5rem;
+    }
     .game-result .winner-name { font-weight: 600; color: var(--accent2); }
     .game-result .result-detail { color: var(--muted); }
+    .strategy-strip-box {
+      background: var(--surface);
+      border-radius: 0 0 12px 12px;
+      padding: 0.25rem 1rem 0.6rem;
+      margin-top: -1.2rem;
+    }
+    .strategy-strip-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 2px;
+    }
+    .strategy-strip-label {
+      color: var(--muted);
+      font-size: 0.72rem;
+      min-width: 110px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .strategy-strip-row canvas {
+      flex: 1;
+      height: 22px;
+      border-radius: 3px;
+    }
+    .stats-section {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .stats-heading {
+      font-size: 1.1rem;
+      color: var(--text);
+      margin: 0 0 0.75rem;
+    }
+    .stats-content {
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .stats-table th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 500;
+      padding: 0.35rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .stats-table td {
+      padding: 0.35rem 0.75rem;
+      border-bottom: 1px solid rgba(59, 66, 97, 0.3);
+    }
+    .stats-table td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .stats-table .stat-label {
+      color: var(--muted);
+    }
+    .stats-table .p1-col { color: #7aa2f7; }
+    .stats-table .p2-col { color: #bb9af7; }
+    .export-row {
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .export-btn {
+      background: var(--surface);
+      color: var(--accent1);
+      border: 1px solid var(--accent1);
+      border-radius: 6px;
+      padding: 0.45rem 1.1rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .export-btn:hover {
+      background: rgba(122, 162, 247, 0.15);
+    }
   </style>
 </head>
 <body>
@@ -204,6 +325,26 @@
     <div class="chart-container">
       <canvas id="mainChart"></canvas>
     </div>
+    <div id="strategyStripBox" class="strategy-strip-box">
+      <div class="strategy-strip-row">
+        <span class="strategy-strip-label">Game state</span>
+        <canvas id="stripCanvas" height="12"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="statsSection" class="stats-section hidden">
+    <h2 class="stats-heading">Game Summary</h2>
+    <div id="statsContent" class="stats-content"></div>
+  </div>
+
+  <div id="exportRow" class="export-row hidden">
+    <button type="button" id="exportBtn" class="export-btn">Export Report</button>
+  </div>
+
+  <div id="narrativeSection" class="narrative-section hidden" role="region" aria-label="Game narrative">
+    <h2 class="narrative-heading">Game Narrative</h2>
+    <div id="narrativeContent" class="narrative-content"></div>
   </div>
 
   <script>
@@ -280,9 +421,9 @@
         var currentRound = 0;
         var currentTurnNum = 0;
         var currentTurnPlayer = null;
-        var turnAttackPlayer = null;
-        var turnAttackCount = 0;
-        var turnAttackUnits = '';
+        var pairTurnNum = 0;
+        var pairPlayersGone = 0;
+        var pairAttacks = []; // array of { player, count, units } for each attack in this pair
         var snapshots = [];
         var gameResult = null;
 
@@ -292,6 +433,11 @@
         battlefield[p2] = {};
         var pendingDiceCost = 0;
         var pendingDicePlayer = null;
+
+        // Summary stat counters
+        var stats = {};
+        stats[p1] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0 };
+        stats[p2] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0 };
 
         function makeState(attackPlayer, attackCount) {
           var state = { round: currentRound, players: {} };
@@ -324,17 +470,25 @@
           return state;
         }
 
-        function flushTurn() {
-          if (currentTurnPlayer == null) return;
+        function flushPair() {
+          if (pairTurnNum === 0) return;
+          // Combine attacks from both turns in the pair
+          var totalAttackCount = 0;
+          var attackPlayer = null;
+          var attackUnitsList = [];
+          for (var ai = 0; ai < pairAttacks.length; ai++) {
+            totalAttackCount += pairAttacks[ai].count;
+            attackPlayer = pairAttacks[ai].player; // last attacker shown
+            if (pairAttacks[ai].units) attackUnitsList.push(pairAttacks[ai].units);
+          }
           snapshots.push({
-            state: makeState(turnAttackPlayer, turnAttackCount),
-            turnLabel: 'R' + currentRound + '.' + currentTurnNum + ' ' + currentTurnPlayer,
+            state: makeState(attackPlayer, totalAttackCount),
+            turnLabel: 'R' + currentRound + '.' + pairTurnNum,
             tag: 'turn',
-            attackUnits: turnAttackUnits || ''
+            attackUnits: attackUnitsList.join(', '),
+            pairAttacks: pairAttacks.slice()
           });
-          turnAttackPlayer = null;
-          turnAttackCount = 0;
-          turnAttackUnits = '';
+          pairAttacks = [];
         }
 
         // Pass 2: parse events turn by turn
@@ -344,10 +498,15 @@
           // Round start
           var roundMatch = line.match(/^Round\s+(\d+)\s*$/);
           if (roundMatch) {
-            flushTurn();
+            flushPair();
+            // Accumulate dice spent this round into totals before resetting
+            if (stats[p1]) stats[p1].totalDiceSpent += diceSpent[p1] || 0;
+            if (stats[p2]) stats[p2].totalDiceSpent += diceSpent[p2] || 0;
             currentRound = parseInt(roundMatch[1], 10);
             currentTurnPlayer = null;
             currentTurnNum = 0;
+            pairTurnNum = 0;
+            pairPlayersGone = 0;
             diceSpent[p1] = 0;
             diceSpent[p2] = 0;
             snapshots.push({
@@ -361,29 +520,42 @@
           // Turn start
           var turnMatch = line.match(/^Turn\s+(\d+)\s+-\s+(\S+)\s*$/);
           if (turnMatch) {
-            flushTurn();
-            currentTurnNum = parseInt(turnMatch[1], 10);
+            var newTurnNum = parseInt(turnMatch[1], 10);
+            if (newTurnNum !== pairTurnNum) {
+              // New pair — flush previous pair
+              flushPair();
+              pairTurnNum = newTurnNum;
+              pairPlayersGone = 1;
+            } else {
+              // Second player in the pair
+              pairPlayersGone = 2;
+            }
+            currentTurnNum = newTurnNum;
             currentTurnPlayer = turnMatch[2];
-            turnAttackPlayer = null;
-            turnAttackCount = 0;
-            turnAttackUnits = '';
             continue;
           }
 
-          // Attack (accumulated into current turn)
+          // Attack (accumulated into pair)
           var attackMatch = line.match(/^(\S+)\s+attacks\s+.+with\s+(\d+)\s+units?:\s*(.+)$/);
           if (attackMatch) {
             var attacker = attackMatch[1];
             var count = parseInt(attackMatch[2], 10);
             if (playerNames.indexOf(attacker) !== -1) {
-              turnAttackPlayer = attacker;
-              turnAttackCount = count;
-              turnAttackUnits = attackMatch[3].replace(/\s*\(\d+\)/g, '').trim();
+              pairAttacks.push({
+                player: attacker,
+                count: count,
+                units: attackMatch[3].replace(/\s*\(\d+\)/g, '').trim()
+              });
+              if (stats[attacker]) {
+                stats[attacker].totalAttacks++;
+                stats[attacker].totalUnitsAttacking += count;
+              }
             }
             continue;
           }
 
           // Phoenixborn damage (accumulated into current turn)
+          // Pattern A: "PBName receives/takes N damage"
           for (var j = 0; j < Object.keys(pbToPlayer).length; j++) {
             var pbName = Object.keys(pbToPlayer)[j];
             var escaped = pbName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -392,6 +564,41 @@
               var amount = parseInt(damageMatch[1], 10);
               var damagedPlayer = pbToPlayer[pbName];
               health[damagedPlayer] = Math.max(0, health[damagedPlayer] - amount);
+              // Track damage dealt to this player (by the opponent)
+              var attacker = damagedPlayer === p1 ? p2 : p1;
+              if (stats[attacker]) stats[attacker].totalDamageDealt += amount;
+              break;
+            }
+          }
+          // Pattern B: "Player adds a damage to PBName" (manual mode)
+          for (var j2 = 0; j2 < Object.keys(pbToPlayer).length; j2++) {
+            var pbName2 = Object.keys(pbToPlayer)[j2];
+            var escaped2 = pbName2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var manualDmgMatch = line.match(new RegExp('adds\\s+(?:a|\\d+)\\s+damage\\s+to\\s+' + escaped2, 'i'));
+            if (manualDmgMatch) {
+              var manualAmt = 1;
+              var numMatch = line.match(/adds\s+(\d+)\s+damage/);
+              if (numMatch) manualAmt = parseInt(numMatch[1], 10);
+              var damagedPlayer2 = pbToPlayer[pbName2];
+              health[damagedPlayer2] = Math.max(0, health[damagedPlayer2] - manualAmt);
+              var attacker2 = damagedPlayer2 === p1 ? p2 : p1;
+              if (stats[attacker2]) stats[attacker2].totalDamageDealt += manualAmt;
+              break;
+            }
+          }
+          // Pattern C: "PBName is destroyed" — ensure health is 0 (catches any missed damage)
+          for (var j3 = 0; j3 < Object.keys(pbToPlayer).length; j3++) {
+            var pbName3 = Object.keys(pbToPlayer)[j3];
+            var escaped3 = pbName3.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (line.match(new RegExp('^' + escaped3 + '\\s+is destroyed', 'i'))) {
+              var destroyedPlayer = pbToPlayer[pbName3];
+              if (health[destroyedPlayer] > 0) {
+                var remaining = health[destroyedPlayer];
+                health[destroyedPlayer] = 0;
+                // Attribute untracked damage to opponent
+                var opp = destroyedPlayer === p1 ? p2 : p1;
+                if (stats[opp]) stats[opp].totalDamageDealt += remaining;
+              }
               break;
             }
           }
@@ -407,8 +614,12 @@
             gameResult = gameResult || { method: 'defeat', round: currentRound, turn: currentTurnNum };
             gameResult.winner = winMatch[1];
             gameResult.winnerPb = playerToPb[winMatch[1]] || winMatch[1];
-            flushTurn();
+            flushPair();
+            // Accumulate final round's dice into totals
+            if (stats[p1]) stats[p1].totalDiceSpent += diceSpent[p1] || 0;
+            if (stats[p2]) stats[p2].totalDiceSpent += diceSpent[p2] || 0;
             currentTurnPlayer = null;
+            pairTurnNum = 0;
             snapshots.push({
               state: makeState(null, 0),
               turnLabel: 'End',
@@ -437,6 +648,18 @@
             if (diceSpent[spender2] != null) {
               diceSpent[spender2] += 1;
             }
+          }
+
+          // Stats: cards played (with or without dice cost prefix)
+          var playsMatch = line.match(/(?::\s*)?(\S+)\s+plays\s+/);
+          if (playsMatch && stats[playsMatch[1]]) {
+            stats[playsMatch[1]].cardsPlayed++;
+          }
+
+          // Stats: meditation
+          var meditateMatch = line.match(/^(\S+)\s+meditates\s+/);
+          if (meditateMatch && stats[meditateMatch[1]]) {
+            stats[meditateMatch[1]].meditated++;
           }
 
           // Battlefield: unit enters play
@@ -498,8 +721,8 @@
           }
         }
 
-        // Flush any remaining open turn (if game ended without explicit end line)
-        flushTurn();
+        // Flush any remaining open pair (if game ended without explicit end line)
+        flushPair();
 
         if (snapshots.length === 0) return null;
         var phoenixborn = {};
@@ -509,7 +732,8 @@
           snapshots: snapshots,
           playerNames: playerNames,
           phoenixborn: phoenixborn,
-          gameResult: gameResult
+          gameResult: gameResult,
+          stats: stats
         };
       }
 
@@ -528,9 +752,12 @@
         var bfValue1 = [];
         var bfValue2 = [];
         var bfValueAdv = [];
+        var pb1 = replayData.phoenixborn[p1];
+        var pb2 = replayData.phoenixborn[p2];
 
         for (var i = 0; i < snapshots.length; i++) {
           var s = snapshots[i];
+          if (s.tag === 'end') continue; // skip End snapshot from charts
           var state = s.state;
           labels.push(s.turnLabel);
 
@@ -555,17 +782,20 @@
           health1.push(h1);
           health2.push(h2);
 
-          // Attacks
-          if (state.attack && state.attack.attackingPlayer != null && Array.isArray(state.attack.battles) && state.attack.battles.length > 0) {
-            var attId = state.attack.attackingPlayer;
-            var attName = null;
-            var playerKeys = Object.keys(state.players || {});
-            for (var j = 0; j < playerKeys.length; j++) {
-              if (state.players[playerKeys[j]].id === attId) { attName = playerKeys[j]; break; }
+          // Attacks (from pairAttacks stored on snapshot)
+          var pa = s.pairAttacks || [];
+          if (pa.length > 0) {
+            var totalCount = 0;
+            var allUnits = [];
+            var lastAttacker = null;
+            for (var ai = 0; ai < pa.length; ai++) {
+              totalCount += pa[ai].count;
+              if (pa[ai].units) allUnits.push(pa[ai].units);
+              lastAttacker = pa[ai].player;
             }
-            attackCount.push(state.attack.battles.length);
-            attackPlayer.push(attName === p1 ? replayData.phoenixborn[p1] : replayData.phoenixborn[p2]);
-            attackUnits.push(s.attackUnits || '');
+            attackCount.push(totalCount);
+            attackPlayer.push(lastAttacker ? (replayData.phoenixborn[lastAttacker] || lastAttacker) : null);
+            attackUnits.push(allUnits.join(', '));
           } else {
             attackCount.push(0);
             attackPlayer.push(null);
@@ -573,9 +803,12 @@
           }
         }
 
-        // Compute strategic state per turn for each player
-        // States: active-dominance, resource-dominance, aggro-control, board-control,
-        //         direct-aggression, holding-back, desperate-aggro, under-siege
+        // Compute single game situation per turn pair
+        // Advantage states (attributed to leading player):
+        //   active-dominance, resource-dominance, aggro-control, board-control,
+        //   direct-aggression, holding-back, desperate-aggro
+        // Parity states (no player attributed):
+        //   full-parity, resource-parity, battlefield-parity, trading-blows
         var stateColors = {
           'active-dominance': '#ff9e64',
           'resource-dominance': '#9ece6a',
@@ -583,8 +816,9 @@
           'board-control': '#7dcfff',
           'direct-aggression': '#f7768e',
           'holding-back': '#565f89',
-          'desperate-aggro': '#ff7a93',
-          'under-siege': '#414868'
+          'contested': '#957fb8',
+          'full-parity': '#414868',
+          'trading-blows': '#c0a0db'
         };
         var stateLabels = {
           'active-dominance': 'Active dominance',
@@ -593,42 +827,56 @@
           'board-control': 'Board control',
           'direct-aggression': 'Direct aggression',
           'holding-back': 'Holding back',
-          'desperate-aggro': 'Desperate aggro',
-          'under-siege': 'Under siege'
+          'contested': 'Contested',
+          'full-parity': 'Full parity',
+          'trading-blows': 'Trading blows'
         };
 
-        var strategy1 = [];
-        var strategy2 = [];
+        // situation[]: { key, player (pb name or null), desc (full text) }
+        var situation = [];
         for (var si = 0; si < labels.length; si++) {
-          // Dealing damage = opponent health dropped since last turn
+          var da = diceAdv[si];
+          var ba = bfValueAdv[si];
           var p1DealtDmg = si > 0 && health2[si] < health2[si - 1];
           var p2DealtDmg = si > 0 && health1[si] < health1[si - 1];
-          var da = diceAdv[si]; // positive = p1 advantage
-          var ba = bfValueAdv[si]; // positive = p1 advantage
+          var anyDmg = p1DealtDmg || p2DealtDmg;
 
-          // P1 perspective
-          var p1Dice = da > 0;
-          var p1Bf = ba > 0;
-          if (p1Dice && p1Bf && p1DealtDmg) strategy1.push('active-dominance');
-          else if (p1Dice && p1Bf && !p1DealtDmg) strategy1.push('resource-dominance');
-          else if (!p1Dice && p1Bf && p1DealtDmg) strategy1.push('aggro-control');
-          else if (!p1Dice && p1Bf && !p1DealtDmg) strategy1.push('board-control');
-          else if (p1Dice && !p1Bf && p1DealtDmg) strategy1.push('direct-aggression');
-          else if (p1Dice && !p1Bf && !p1DealtDmg) strategy1.push('holding-back');
-          else if (!p1Dice && !p1Bf && p1DealtDmg) strategy1.push('desperate-aggro');
-          else strategy1.push('under-siege');
+          var diceParity = da === 0;
+          var bfParity = ba === 0;
 
-          // P2 perspective (mirror)
-          var p2Dice = da < 0;
-          var p2Bf = ba < 0;
-          if (p2Dice && p2Bf && p2DealtDmg) strategy2.push('active-dominance');
-          else if (p2Dice && p2Bf && !p2DealtDmg) strategy2.push('resource-dominance');
-          else if (!p2Dice && p2Bf && p2DealtDmg) strategy2.push('aggro-control');
-          else if (!p2Dice && p2Bf && !p2DealtDmg) strategy2.push('board-control');
-          else if (p2Dice && !p2Bf && p2DealtDmg) strategy2.push('direct-aggression');
-          else if (p2Dice && !p2Bf && !p2DealtDmg) strategy2.push('holding-back');
-          else if (!p2Dice && !p2Bf && p2DealtDmg) strategy2.push('desperate-aggro');
-          else strategy2.push('under-siege');
+          if (diceParity && bfParity) {
+            if (anyDmg) situation.push({ key: 'trading-blows', player: null, desc: 'Trading blows' });
+            else situation.push({ key: 'full-parity', player: null, desc: 'Full parity' });
+          } else if (diceParity && !bfParity) {
+            var bfLeader = ba > 0 ? pb1 : pb2;
+            var bfLeaderDealt = ba > 0 ? p1DealtDmg : p2DealtDmg;
+            if (bfLeaderDealt) situation.push({ key: 'aggro-control', player: bfLeader, desc: bfLeader + ': Aggro control' });
+            else situation.push({ key: 'board-control', player: bfLeader, desc: bfLeader + ': Board control' });
+          } else if (!diceParity && bfParity) {
+            var diceLeader = da > 0 ? pb1 : pb2;
+            var diceLeaderDealt = da > 0 ? p1DealtDmg : p2DealtDmg;
+            if (diceLeaderDealt) situation.push({ key: 'direct-aggression', player: diceLeader, desc: diceLeader + ': Direct aggression' });
+            else situation.push({ key: 'holding-back', player: diceLeader, desc: diceLeader + ': Holding back' });
+          } else {
+            // Both split — check if same player leads both or different
+            var diceLeaderIsP1 = da > 0;
+            var bfLeaderIsP1 = ba > 0;
+            if (diceLeaderIsP1 === bfLeaderIsP1) {
+              var leader = diceLeaderIsP1 ? pb1 : pb2;
+              var leaderDealt = diceLeaderIsP1 ? p1DealtDmg : p2DealtDmg;
+              if (leaderDealt) situation.push({ key: 'active-dominance', player: leader, desc: leader + ': Active dominance' });
+              else situation.push({ key: 'resource-dominance', player: leader, desc: leader + ': Resource dominance' });
+            } else {
+              // Different players lead dice vs BF
+              var dLeader = diceLeaderIsP1 ? pb1 : pb2;
+              var bLeader = bfLeaderIsP1 ? pb1 : pb2;
+              var desc = dLeader + ' holding back; ' + bLeader + ' controlling battlefield';
+              if (anyDmg) {
+                desc = dLeader + ' holding back; ' + bLeader + ' aggro control';
+              }
+              situation.push({ key: 'contested', player: null, desc: desc });
+            }
+          }
         }
 
         return {
@@ -642,8 +890,7 @@
           bfValue1: bfValue1,
           bfValue2: bfValue2,
           bfValueAdv: bfValueAdv,
-          strategy1: strategy1,
-          strategy2: strategy2,
+          situation: situation,
           stateColors: stateColors,
           stateLabels: stateLabels
         };
@@ -841,9 +1088,9 @@
         var tooltipFooter = function (items) {
           if (!items.length) return '';
           var idx = items[0].dataIndex;
-          var s1 = series.strategy1[idx];
-          var s2 = series.strategy2[idx];
-          return pb1 + ': ' + series.stateLabels[s1] + '\n' + pb2 + ': ' + series.stateLabels[s2];
+          var sit = series.situation[idx];
+          if (!sit) return '';
+          return sit.desc;
         };
 
         // Plugin: alternating round backgrounds
@@ -890,44 +1137,89 @@
           }
         };
 
-        // Plugin: strategy strip below chart
-        var strategyStripPlugin = {
-          id: 'strategyStrip',
-          afterDraw: function (chart) {
-            if (!series.strategy1 || !series.strategy2) return;
-            var ctx = chart.ctx;
-            var xScale = chart.scales.x;
-            var bottom = chart.chartArea.bottom;
-            var labels = chart.data.labels;
-            if (!labels || labels.length < 2) return;
-            var halfStep = (xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) / 2;
-            var stripH = 8;
-            var gap = 2;
-
-            ctx.save();
-            // P1 strip
-            for (var si = 0; si < labels.length; si++) {
-              var x = xScale.getPixelForValue(si) - halfStep;
-              var w = halfStep * 2;
-              ctx.fillStyle = series.stateColors[series.strategy1[si]] || '#414868';
-              ctx.fillRect(x, bottom + 4, w, stripH);
-            }
-            // P2 strip
-            for (var si = 0; si < labels.length; si++) {
-              var x = xScale.getPixelForValue(si) - halfStep;
-              var w = halfStep * 2;
-              ctx.fillStyle = series.stateColors[series.strategy2[si]] || '#414868';
-              ctx.fillRect(x, bottom + 4 + stripH + gap, w, stripH);
-            }
-            // Labels
-            ctx.fillStyle = '#565f89';
-            ctx.font = '10px sans-serif';
-            ctx.textAlign = 'right';
-            ctx.fillText(pb1, xScale.getPixelForValue(0) - halfStep - 4, bottom + 4 + stripH - 1);
-            ctx.fillText(pb2, xScale.getPixelForValue(0) - halfStep - 4, bottom + 4 + stripH + gap + stripH - 1);
-            ctx.restore();
+        // Draw situation strip on canvas
+        function drawSituationStrip(canvasEl) {
+          var sit = series.situation;
+          var n = sit.length;
+          if (n === 0) return;
+          var rect = canvasEl.getBoundingClientRect();
+          var dpr = window.devicePixelRatio || 1;
+          canvasEl.width = rect.width * dpr;
+          canvasEl.height = rect.height * dpr;
+          var ctx = canvasEl.getContext('2d');
+          ctx.scale(dpr, dpr);
+          var w = rect.width;
+          var h = rect.height;
+          var segW = w / n;
+          // Draw colored segments
+          for (var si = 0; si < n; si++) {
+            ctx.fillStyle = series.stateColors[sit[si].key] || '#414868';
+            ctx.fillRect(si * segW, 0, segW + 0.5, h);
           }
-        };
+          // Draw PB names on segments
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(255,255,255,0.85)';
+          var fontSize = Math.max(8, Math.min(11, h * 0.52));
+          ctx.font = '600 ' + fontSize + 'px "Segoe UI", system-ui, sans-serif';
+          // Helper to get display label for a situation
+          function sitLabel(s) {
+            if (s.player) return s.player;
+            if (s.key === 'contested' && s.desc) {
+              var parts = s.desc.split(';');
+              if (parts.length === 2) {
+                return parts[0].trim().split(/\s/)[0] + ' vs ' + parts[1].trim().split(/\s/)[0];
+              }
+            }
+            return '';
+          }
+          // Merge consecutive segments with the same label into runs
+          var runs = [];
+          var ri = 0;
+          while (ri < n) {
+            var label = sitLabel(sit[ri]);
+            var runStart = ri;
+            ri++;
+            while (ri < n && sit[ri].key === sit[runStart].key && sitLabel(sit[ri]) === label) {
+              ri++;
+            }
+            if (label) {
+              runs.push({ start: runStart, end: ri, label: label });
+            }
+          }
+          for (var r = 0; r < runs.length; r++) {
+            var run = runs[r];
+            var x0 = run.start * segW;
+            var runW = (run.end - run.start) * segW;
+            var textW = ctx.measureText(run.label).width;
+            var displayLabel = run.label;
+            // If full name doesn't fit, try progressively shorter forms
+            if (textW > runW - 4) {
+              if (run.label.indexOf(' vs ') > -1) {
+                // Contested: "Lulu vs Fiona" → "L vs F"
+                var vsParts = run.label.split(' vs ');
+                displayLabel = vsParts[0][0] + ' vs ' + vsParts[1][0];
+              } else {
+                // Single player: try first name only
+                displayLabel = run.label.split(/\s/)[0];
+              }
+              textW = ctx.measureText(displayLabel).width;
+            }
+            // If still doesn't fit, try shortest abbreviation
+            if (textW > runW - 4) {
+              if (run.label.indexOf(' vs ') > -1) {
+                displayLabel = '⟷'; // contested marker
+              } else {
+                displayLabel = run.label.substring(0, 3);
+              }
+              textW = ctx.measureText(displayLabel).width;
+            }
+            // Only draw if it fits with at least 2px padding
+            if (textW <= runW - 2) {
+              ctx.fillStyle = 'rgba(255,255,255,0.9)';
+              ctx.fillText(displayLabel, x0 + (runW - textW) / 2, h / 2);
+            }
+          }
+        }
 
         // Build custom HTML legend
         var legendBox = document.getElementById('chartLegend');
@@ -969,7 +1261,6 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            layout: { padding: { bottom: 28 } },
             plugins: {
               legend: { display: false },
               tooltip: {
@@ -981,8 +1272,11 @@
             },
             scales: scales
           },
-          plugins: [roundBandsPlugin, strategyStripPlugin]
+          plugins: [roundBandsPlugin]
         });
+
+        // Draw situation strip
+        drawSituationStrip(document.getElementById('stripCanvas'));
       }
 
       function renderGameResult() {
@@ -1002,18 +1296,355 @@
         box.classList.remove('hidden');
       }
 
+      function renderStats() {
+        var section = document.getElementById('statsSection');
+        var content = document.getElementById('statsContent');
+        if (!replayData || !replayData.stats) { section.classList.add('hidden'); return; }
+
+        var series = buildSeries();
+        if (!series) { section.classList.add('hidden'); return; }
+
+        var p1 = replayData.playerNames[0];
+        var p2 = replayData.playerNames[1];
+        var pb1 = replayData.phoenixborn[p1];
+        var pb2 = replayData.phoenixborn[p2];
+        var s1 = replayData.stats[p1];
+        var s2 = replayData.stats[p2];
+
+        // Compute turns in control from situation data
+        var turnsInControl1 = 0, turnsInControl2 = 0, turnsParity = 0;
+        for (var i = 0; i < series.situation.length; i++) {
+          var sit = series.situation[i];
+          if (sit.player === pb1) turnsInControl1++;
+          else if (sit.player === pb2) turnsInControl2++;
+          else turnsParity++;
+        }
+
+        // Compute total rounds
+        var totalRounds = replayData.gameResult ? replayData.gameResult.round : 0;
+
+        // Starting and final health
+        var startH1 = series.health1[0] || 0;
+        var startH2 = series.health2[0] || 0;
+        var finalH1 = series.health1[series.health1.length - 1] || 0;
+        var finalH2 = series.health2[series.health2.length - 1] || 0;
+
+        function row(label, v1, v2) {
+          return '<tr><td class="stat-label">' + escapeHtml(label) + '</td><td class="num p1-col">' + v1 + '</td><td class="num p2-col">' + v2 + '</td></tr>';
+        }
+
+        var html = '<table class="stats-table">';
+        html += '<thead><tr><th></th><th class="p1-col">' + escapeHtml(pb1) + '</th><th class="p2-col">' + escapeHtml(pb2) + '</th></tr></thead>';
+        html += '<tbody>';
+        html += row('Starting health', startH1, startH2);
+        html += row('Final health', finalH1, finalH2);
+        html += row('Damage dealt to PB', s1.totalDamageDealt, s2.totalDamageDealt);
+        html += row('Total attacks', s1.totalAttacks, s2.totalAttacks);
+        html += row('Total units attacking', s1.totalUnitsAttacking, s2.totalUnitsAttacking);
+        html += row('Cards played', s1.cardsPlayed, s2.cardsPlayed);
+        html += row('Cards meditated', s1.meditated, s2.meditated);
+        html += row('Dice spent', s1.totalDiceSpent, s2.totalDiceSpent);
+        html += row('Dice available (' + totalRounds + ' rounds)', totalRounds * 10, totalRounds * 10);
+        html += row('Turns in control', turnsInControl1, turnsInControl2);
+        if (turnsParity > 0) {
+          html += '<tr><td class="stat-label">Turns at parity / contested</td><td class="num" colspan="2" style="text-align:center;color:var(--muted)">' + turnsParity + '</td></tr>';
+        }
+        html += '</tbody></table>';
+
+        content.innerHTML = html;
+        section.classList.remove('hidden');
+      }
+
+      function renderNarrative() {
+        var section = document.getElementById('narrativeSection');
+        var content = document.getElementById('narrativeContent');
+        if (!replayData) { section.classList.add('hidden'); return; }
+
+        var series = buildSeries();
+        if (!series) { section.classList.add('hidden'); return; }
+
+        var p1 = replayData.playerNames[0];
+        var p2 = replayData.playerNames[1];
+        var pb1 = replayData.phoenixborn[p1];
+        var pb2 = replayData.phoenixborn[p2];
+        var html = '';
+        var currentRound = null;
+
+        for (var i = 0; i < series.labels.length; i++) {
+          var label = series.labels[i];
+
+          // Round start snapshots
+          if (label.indexOf('start') !== -1) {
+            if (currentRound !== null) html += '</div>'; // close previous round
+            var rNum = label.match(/R(\d+)/);
+            currentRound = rNum ? rNum[1] : '?';
+            html += '<div class="narr-round" role="group" aria-label="Round ' + currentRound + '">';
+            html += '<div class="narr-round-header">Round ' + currentRound + '</div>';
+            continue;
+          }
+
+          // End snapshot
+          if (label === 'End') continue;
+
+          // Turn pair snapshot
+          var h1 = series.health1[i];
+          var h2 = series.health2[i];
+          var prevH1 = i > 0 ? series.health1[i - 1] : h1;
+          var prevH2 = i > 0 ? series.health2[i - 1] : h2;
+          var dmg1 = prevH1 - h1; // damage taken by p1
+          var dmg2 = prevH2 - h2; // damage taken by p2
+
+          var parts = [];
+
+          // Health changes
+          if (dmg2 > 0) parts.push(pb1 + ' deals ' + dmg2 + ' damage to ' + pb2 + ' (' + h2 + ' HP remaining)');
+          if (dmg1 > 0) parts.push(pb2 + ' deals ' + dmg1 + ' damage to ' + pb1 + ' (' + h1 + ' HP remaining)');
+          if (dmg1 === 0 && dmg2 === 0) parts.push('No Phoenixborn damage this turn');
+
+          // Attacks
+          if (series.attackCount[i] > 0) {
+            var units = series.attackUnits[i];
+            parts.push(series.attackCount[i] + ' unit(s) attacked' + (units ? ': ' + units : ''));
+          }
+
+          // Dice
+          var da = series.diceAdvantage[i];
+          if (da > 0) parts.push(pb1 + ' leads by ' + da + ' unspent dice');
+          else if (da < 0) parts.push(pb2 + ' leads by ' + (-da) + ' unspent dice');
+          else parts.push('Dice tied');
+
+          // Battlefield
+          var ba = series.bfValueAdv[i];
+          if (ba > 0) parts.push(pb1 + ' leads battlefield value by ' + ba);
+          else if (ba < 0) parts.push(pb2 + ' leads battlefield value by ' + (-ba));
+          else parts.push('Battlefield value tied');
+
+          // Situation
+          var sit = series.situation[i];
+          var sitText = sit.desc;
+
+          html += '<div class="narr-turn" role="listitem">';
+          html += '<strong>' + escapeHtml(label) + ':</strong> ';
+          html += escapeHtml(parts.join('. ')) + '. ';
+          html += '<span class="narr-state">' + escapeHtml(sitText) + '</span>';
+          html += '</div>';
+        }
+
+        if (currentRound !== null) html += '</div>'; // close last round
+
+        // Game result
+        if (replayData.gameResult) {
+          var r = replayData.gameResult;
+          var winner = r.winnerPb || r.winner;
+          html += '<div class="narr-result">' + escapeHtml(winner) + ' wins in Round ' + r.round + ', Turn ' + r.turn;
+          if (r.method === 'concession') html += ' by concession';
+          html += '.</div>';
+        }
+
+        content.innerHTML = html;
+        section.classList.remove('hidden');
+      }
+
+      function exportReport() {
+        var series = buildSeries();
+        if (!series || !replayData) return;
+
+        var p1 = replayData.playerNames[0];
+        var p2 = replayData.playerNames[1];
+        var pb1 = replayData.phoenixborn[p1];
+        var pb2 = replayData.phoenixborn[p2];
+
+        // Build game result HTML
+        var resultHtml = '';
+        if (replayData.gameResult) {
+          var r = replayData.gameResult;
+          resultHtml = '<div class="game-result"><span class="winner-name">' + escapeHtml(r.winnerPb || r.winner) + '</span> wins';
+          resultHtml += ' <span class="result-detail">Round ' + r.round + ', Turn ' + r.turn;
+          if (r.method === 'concession') resultHtml += ' by concession';
+          resultHtml += '</span></div>';
+        }
+
+        // PB cards HTML
+        var pbHtml = '<div class="phoenixborn-cards">';
+        for (var i = 0; i < replayData.playerNames.length; i++) {
+          var pn = replayData.playerNames[i];
+          pbHtml += '<div class="phoenixborn-card"><div class="player">' + escapeHtml(pn) + '</div><div class="name">' + escapeHtml(replayData.phoenixborn[pn] || pn) + '</div></div>';
+        }
+        pbHtml += '</div>';
+
+        // Strategy strip as colored HTML divs
+        var stripHtml = '<div class="strip-row"><span class="strip-label">Game state</span><div class="strip-bar">';
+        var n = series.situation.length;
+        for (var si = 0; si < n; si++) {
+          var sit = series.situation[si];
+          var bgColor = series.stateColors[sit.key] || '#414868';
+          var segLabel = '';
+          if (sit.player) {
+            segLabel = sit.player.split(/\s/)[0]; // first name
+          } else if (sit.key === 'contested' && sit.desc) {
+            var parts = sit.desc.split(';');
+            if (parts.length === 2) segLabel = parts[0].trim().split(/\s/)[0][0] + ' vs ' + parts[1].trim().split(/\s/)[0][0];
+          }
+          stripHtml += '<div class="strip-seg" style="background:' + bgColor + ';width:' + (100 / n) + '%"' + (sit.desc ? ' title="' + escapeHtml(sit.desc) + '"' : '') + '>';
+          if (segLabel) stripHtml += '<span class="strip-seg-text">' + escapeHtml(segLabel) + '</span>';
+          stripHtml += '</div>';
+        }
+        stripHtml += '</div></div>';
+
+        // Strategy legend
+        var stKeys = Object.keys(series.stateLabels);
+        var legendHtml = '<div class="state-legend">';
+        for (var sk = 0; sk < stKeys.length; sk++) {
+          legendHtml += '<span class="legend-item"><span class="swatch" style="background:' + series.stateColors[stKeys[sk]] + '"></span>' + series.stateLabels[stKeys[sk]] + '</span>';
+        }
+        legendHtml += '</div>';
+
+        // Narrative HTML
+        var narrativeHtml = document.getElementById('narrativeContent').innerHTML;
+
+        // Stats HTML
+        var statsHtml = document.getElementById('statsContent').innerHTML;
+
+        // Serialize series data as JSON for charts
+        var seriesJson = JSON.stringify({
+          labels: series.labels,
+          health1: series.health1,
+          health2: series.health2,
+          diceAdvantage: series.diceAdvantage,
+          attackCount: series.attackCount,
+          attackPlayer: series.attackPlayer,
+          attackUnits: series.attackUnits,
+          bfValue1: series.bfValue1,
+          bfValue2: series.bfValue2,
+          bfValueAdv: series.bfValueAdv,
+          situation: series.situation,
+          stateColors: series.stateColors,
+          stateLabels: series.stateLabels
+        });
+
+        var title = escapeHtml(pb1 + ' vs ' + pb2 + ' — Game Report');
+
+        var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>' + title + '</title>\n'
+          + '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>\n'
+          + '<style>\n'
+          + ':root{--bg:#1a1b26;--surface:#24283b;--text:#c0caf5;--muted:#565f89;--accent1:#7aa2f7;--accent2:#bb9af7;--green:#9ece6a;--red:#f7768e;--border:#3b4261}\n'
+          + '*{box-sizing:border-box}\n'
+          + 'body{font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:1.5rem;min-height:100vh}\n'
+          + 'h1{font-size:1.5rem;font-weight:600;margin:0 0 0.5rem;color:var(--accent1)}\n'
+          + 'h2{font-size:1.15rem;color:var(--text);margin:1.5rem 0 0.75rem}\n'
+          + 'h3{font-size:1rem;color:var(--muted);margin:1rem 0 0.5rem}\n'
+          + '.phoenixborn-cards{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}\n'
+          + '.phoenixborn-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem;min-width:180px}\n'
+          + '.phoenixborn-card .player{color:var(--muted);font-size:0.85rem}\n'
+          + '.phoenixborn-card .name{font-weight:600;color:var(--accent2)}\n'
+          + '.game-result{background:var(--surface);border:1px solid var(--accent2);border-radius:8px;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.95rem}\n'
+          + '.game-result .winner-name{font-weight:600;color:var(--accent2)}\n'
+          + '.game-result .result-detail{color:var(--muted)}\n'
+          + '.chart-box{background:var(--surface);border-radius:12px;padding:1rem;margin-bottom:0.75rem;position:relative;height:260px}\n'
+          + '.chart-box canvas{max-height:240px}\n'
+          + '.chart-legend{display:flex;flex-wrap:wrap;gap:0.4rem 1rem;margin-bottom:0.5rem;font-size:0.8rem;color:var(--muted)}\n'
+          + '.chart-legend .legend-item{display:flex;align-items:center;gap:0.3rem}\n'
+          + '.chart-legend .swatch{display:inline-block;width:14px;height:14px;border-radius:3px;flex-shrink:0}\n'
+          + '.chart-legend .swatch-line{width:20px;height:3px;border-radius:2px}\n'
+          + '.chart-legend .swatch-line-dashed{width:20px;height:0;border-top:3px dashed;border-radius:0}\n'
+          + '.strip-row{display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 1rem}\n'
+          + '.strip-label{color:var(--muted);font-size:0.72rem;min-width:80px;text-align:right}\n'
+          + '.strip-bar{display:flex;flex:1;height:22px;border-radius:3px;overflow:hidden}\n'
+          + '.strip-seg{display:flex;align-items:center;justify-content:center;overflow:hidden}\n'
+          + '.strip-seg-text{color:rgba(255,255,255,0.9);font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}\n'
+          + '.state-legend{display:flex;flex-wrap:wrap;gap:0.4rem 1rem;font-size:0.8rem;color:var(--muted);margin-bottom:1rem}\n'
+          + '.state-legend .legend-item{display:flex;align-items:center;gap:0.3rem}\n'
+          + '.state-legend .swatch{display:inline-block;width:12px;height:12px;border-radius:2px;flex-shrink:0}\n'
+          + '.narrative{background:var(--surface);border-radius:12px;padding:1.25rem 1.5rem;margin-top:1rem}\n'
+          + '.narrative h2{margin-top:0}\n'
+          + '.narr-content{font-size:0.88rem;line-height:1.65;color:#a9b1d6}\n'
+          + '.narr-round{margin-bottom:0.75rem}\n'
+          + '.narr-round-header{font-weight:600;color:var(--text);margin-bottom:0.25rem}\n'
+          + '.narr-turn{margin-left:1rem;margin-bottom:0.3rem}\n'
+          + '.narr-state{color:var(--muted);font-style:italic}\n'
+          + '.narr-result{font-weight:600;color:var(--accent2);margin-top:0.5rem}\n'
+          + '.stats-box{background:var(--surface);border-radius:12px;padding:1.25rem 1.5rem;margin-top:1rem}\n'
+          + '.stats-box h2{margin-top:0}\n'
+          + '.stats-table{width:100%;border-collapse:collapse;font-size:0.85rem}\n'
+          + '.stats-table th{text-align:left;color:var(--muted);font-weight:500;padding:0.35rem 0.75rem;border-bottom:1px solid var(--border)}\n'
+          + '.stats-table td{padding:0.35rem 0.75rem;border-bottom:1px solid rgba(59,66,97,0.3)}\n'
+          + '.stats-table td.num{text-align:right;font-variant-numeric:tabular-nums}\n'
+          + '.stats-table .stat-label{color:var(--muted)}\n'
+          + '.stats-table .p1-col{color:#7aa2f7}\n'
+          + '.stats-table .p2-col{color:#bb9af7}\n'
+          + '.footer{color:var(--muted);font-size:0.75rem;margin-top:1.5rem;text-align:center}\n'
+          + '</style>\n</head>\n<body>\n'
+          + '<h1>' + title + '</h1>\n'
+          + pbHtml + '\n'
+          + resultHtml + '\n'
+          + '<h2>Health</h2>\n'
+          + '<div class="chart-legend" id="legendHealth"></div>\n'
+          + '<div class="chart-box"><canvas id="chartHealth"></canvas></div>\n'
+          + '<h2>Dice Advantage</h2>\n'
+          + '<div class="chart-legend" id="legendDice"></div>\n'
+          + '<div class="chart-box"><canvas id="chartDice"></canvas></div>\n'
+          + '<h2>Battlefield Value</h2>\n'
+          + '<div class="chart-legend" id="legendBf"></div>\n'
+          + '<div class="chart-box"><canvas id="chartBf"></canvas></div>\n'
+          + '<h2>Attacks</h2>\n'
+          + '<div class="chart-legend" id="legendAtk"></div>\n'
+          + '<div class="chart-box"><canvas id="chartAtk"></canvas></div>\n'
+          + '<h3>Game State</h3>\n'
+          + stripHtml + '\n'
+          + legendHtml + '\n'
+          + '<div class="stats-box"><h2>Game Summary</h2>' + statsHtml + '</div>\n'
+          + '<div class="narrative"><h2>Game Narrative</h2><div class="narr-content">' + narrativeHtml + '</div></div>\n'
+          + '<div class="footer">Generated by Ashteki Replay Visualizer</div>\n'
+          + '<script>\n'
+          + 'var S = ' + seriesJson + ';\n'
+          + 'var pb1 = ' + JSON.stringify(pb1) + ';\n'
+          + 'var pb2 = ' + JSON.stringify(pb2) + ';\n'
+          + 'var xGrid={color:"rgba(59,66,97,0.5)"}, xTicks={color:"#565f89",maxRotation:45}, yGrid={color:"rgba(59,66,97,0.5)"}, yTicks={color:"#565f89"};\n'
+          + 'function swatch(c,t){if(t==="line")return\'<span class="swatch swatch-line" style="background:\'+c+\'"></span>\';if(t==="dashed")return\'<span class="swatch swatch-line-dashed" style="border-color:\'+c+\'"></span>\';return\'<span class="swatch" style="background:\'+c+\'"></span>\';}\n'
+          + 'var roundBandsPlugin={id:"roundBands",beforeDraw:function(chart){var ctx=chart.ctx,xS=chart.scales.x,yT=chart.chartArea.top,yB=chart.chartArea.bottom,l=chart.data.labels;if(!l||!l.length)return;var rounds=[],cr=null,si=0;for(var i=0;i<l.length;i++){var m=l[i].match(/^R(\\d+)/);var rn=m?m[1]:cr;if(rn!==cr){if(cr!==null)rounds.push({round:parseInt(cr,10),start:si,end:i-1});cr=rn;si=i;}}if(cr!==null)rounds.push({round:parseInt(cr,10),start:si,end:l.length-1});ctx.save();for(var b=0;b<rounds.length;b++){if(rounds[b].round%2===0){var x1=xS.getPixelForValue(rounds[b].start)-(xS.getPixelForValue(1)-xS.getPixelForValue(0))/2;var x2=xS.getPixelForValue(rounds[b].end)+(xS.getPixelForValue(1)-xS.getPixelForValue(0))/2;ctx.fillStyle="rgba(255,255,255,0.03)";ctx.fillRect(x1,yT,x2-x1,yB-yT);}}ctx.restore();}};\n'
+          // Health chart
+          + 'document.getElementById("legendHealth").innerHTML=\'<span class="legend-item">\'+swatch("#7aa2f7","line")+pb1+\' health</span><span class="legend-item">\'+swatch("#bb9af7","line")+pb2+\' health</span>\';\n'
+          + 'new Chart(document.getElementById("chartHealth"),{type:"bar",data:{labels:S.labels,datasets:[{label:pb1+" health",type:"line",data:S.health1,borderColor:"#7aa2f7",backgroundColor:"rgba(122,162,247,0.1)",fill:false,tension:0.2,pointRadius:3,yAxisID:"yLeft",order:1},{label:pb2+" health",type:"line",data:S.health2,borderColor:"#bb9af7",backgroundColor:"rgba(187,154,247,0.1)",fill:false,tension:0.2,pointRadius:3,yAxisID:"yLeft",order:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Health",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          // Dice chart
+          + 'document.getElementById("legendDice").innerHTML=\'<span class="legend-item">\'+swatch("rgba(158,206,106,0.7)")+pb1+\' dice advantage</span><span class="legend-item">\'+swatch("rgba(247,118,142,0.7)")+pb2+\' dice advantage</span>\';\n'
+          + 'new Chart(document.getElementById("chartDice"),{type:"bar",data:{labels:S.labels,datasets:[{label:"Dice advantage ("+pb1+" − "+pb2+")",data:S.diceAdvantage,backgroundColor:function(ctx){var v=ctx.raw;return v>0?"rgba(158,206,106,0.35)":v<0?"rgba(247,118,142,0.35)":"rgba(91,96,120,0.2)"},borderColor:function(ctx){var v=ctx.raw;return v>0?"rgba(158,206,106,0.6)":v<0?"rgba(247,118,142,0.6)":"rgba(91,96,120,0.4)"},borderWidth:1,yAxisID:"yRight"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){var v=ctx.raw;if(v>0)return pb1+" has "+v+" more unspent dice";if(v<0)return pb2+" has "+(-v)+" more unspent dice";return"Tied"},footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yRight:{type:"linear",position:"right",grid:yGrid,ticks:yTicks,title:{display:true,text:"Dice advantage",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          // Battlefield chart
+          + 'document.getElementById("legendBf").innerHTML=\'<span class="legend-item">\'+swatch("#7aa2f7","dashed")+pb1+\' battlefield</span><span class="legend-item">\'+swatch("#bb9af7","dashed")+pb2+\' battlefield</span><span class="legend-item">\'+swatch("rgba(255,158,100,0.6)")+pb1+\' BF adv</span><span class="legend-item">\'+swatch("rgba(125,207,255,0.6)")+pb2+\' BF adv</span>\';\n'
+          + 'new Chart(document.getElementById("chartBf"),{type:"bar",data:{labels:S.labels,datasets:[{label:pb1+" battlefield",type:"line",data:S.bfValue1,borderColor:"#7aa2f7",backgroundColor:"rgba(122,162,247,0.08)",borderDash:[6,3],fill:false,tension:0.2,pointRadius:2,yAxisID:"yLeft",order:1},{label:pb2+" battlefield",type:"line",data:S.bfValue2,borderColor:"#bb9af7",backgroundColor:"rgba(187,154,247,0.08)",borderDash:[6,3],fill:false,tension:0.2,pointRadius:2,yAxisID:"yLeft",order:1},{label:"BF advantage",data:S.bfValueAdv,backgroundColor:function(ctx){var v=ctx.raw;return v>0?"rgba(255,158,100,0.35)":v<0?"rgba(125,207,255,0.35)":"rgba(91,96,120,0.2)"},borderColor:function(ctx){var v=ctx.raw;return v>0?"rgba(255,158,100,0.6)":v<0?"rgba(125,207,255,0.6)":"rgba(91,96,120,0.4)"},borderWidth:1,yAxisID:"yRight",order:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Battlefield value",color:"#565f89"}},yRight:{type:"linear",position:"right",grid:{drawOnChartArea:false},ticks:yTicks,title:{display:true,text:"BF advantage",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          // Attacks chart
+          + 'document.getElementById("legendAtk").innerHTML=\'<span class="legend-item">\'+swatch("#7aa2f7")+pb1+\' attacks</span><span class="legend-item">\'+swatch("#bb9af7")+pb2+\' attacks</span>\';\n'
+          + 'new Chart(document.getElementById("chartAtk"),{type:"bar",data:{labels:S.labels,datasets:[{label:"Attacks",data:S.attackCount.map(function(c){return c>0?c:null}),backgroundColor:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(!who)return"transparent";return who===pb1?"rgba(122,162,247,0.9)":"rgba(187,154,247,0.9)"},borderColor:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(!who)return"transparent";return who===pb1?"#7aa2f7":"#bb9af7"},borderWidth:2,yAxisID:"yLeft",barPercentage:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(who&&ctx.raw>0){var u=S.attackUnits[ctx.dataIndex];return who+" attacked with "+ctx.raw+" unit(s)"+(u?": "+u:"")}return""},footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Units attacking",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          + '<\/script>\n</body>\n</html>';
+
+        // Trigger download
+        var blob = new Blob([html], { type: 'text/html' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (pb1 + ' vs ' + pb2 + ' - Game Report').replace(/[^a-zA-Z0-9 \-_]/g, '') + '.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
       function onReplayLoaded(data) {
         clearError();
         replayData = data;
         renderPhoenixborn();
         renderGameResult();
         chartSection.classList.remove('hidden');
+        document.getElementById('exportRow').classList.remove('hidden');
         updateChart();
+        renderStats();
+        renderNarrative();
       }
 
       [layerHealth, layerDice, layerAttacks, layerBattlefield].forEach(function (cb) {
         cb.addEventListener('change', updateChart);
       });
+
+      document.getElementById('exportBtn').addEventListener('click', exportReport);
 
       document.getElementById('parseChatBtn').addEventListener('click', function () {
         var text = document.getElementById('chatInput').value.trim();
