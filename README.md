@@ -1,45 +1,52 @@
-# Ashteki Replay Visualizer
+# Ashes Reborn Game Visualizer
 
-A single-page tool to visualize [Ashteki](https://github.com/Ashteki/ashteki) game replays: phoenixborn, dice advantage, health over time, and attacks.
+A single-page tool to visualize [Ashteki](https://github.com/Ashteki/ashteki) game chat logs for [Ashes: Reborn](https://www.plaidhatgames.com/board-games/ashes-reborn/). Paste a game's chat log and get an interactive chart showing health, dice advantage, battlefield value, and attacks over the course of the game.
 
 ## Features
 
-- **Two input modes**
-  - **Replay file** – Upload an **.ashteki** replay (ZIP containing a `.replay` JSON file, as downloaded from Ashteki) or a raw **.json** (API response from `/api/game/:id/replay` or a single state object).
-  - **Game chat log** – Paste or upload the plain-text game chat (e.g. copied from Ashteki). The parser reconstructs the timeline from:
-    - “X brings Y to battle” (player and Phoenixborn)
-    - “Round N”
-    - “Player attacks … with K units”
-    - “PhoenixbornName receives N damage”
-- **Phoenixborn** – Shows which Phoenixborn each player used. **Starting life** for each Phoenixborn uses the standard card values (health = middle stat; unknown Phoenixborn default to 20).
-- **One timeline, three views** (selector at top of chart):
-  - **Dice advantage** – Unspent dice lead (JSON replay only; not available when using a chat log)
-  - **Health remaining** – Both Phoenixborn’s health over the game (from replay snapshots or from damage lines in chat)
-  - **Attacks** – When each player attacked and how many units they attacked with
+- **Chat log input** – Paste the plain-text game chat copied from Ashteki. The parser reconstructs the full game timeline from chat events including:
+  - Player and Phoenixborn identification (`"X brings Y to battle"`)
+  - Round and turn structure (`"Round N"`, `"Turn N - Player"`)
+  - Attacks and defending units (`"Player attacks ... with K units: UnitName"`)
+  - Phoenixborn damage (`"PhoenixbornName receives/takes N damage"`)
+  - Dice spending (cost prefixes like `"natural class die : Player plays ..."` and inline die use)
+  - Unit summoning and destruction for battlefield tracking
+  - Manual mode corrections (units moved to/from play area)
+  - Game result (concession or defeat)
 
-## Replay format
+- **Phoenixborn cards** – Displays each player's Phoenixborn with starting life values. All 32 standard Phoenixborn are supported with hardcoded life totals.
 
-The page accepts:
+- **Game result banner** – Shows the winner, their Phoenixborn, the round/turn, and method (concession vs defeat).
 
-1. **API response** from `GET /api/game/:id/replay` on an Ashteki server (e.g. `https://ashteki.com/api/game/<gameId>/replay`):  
-   `{ "success": true, "replay": [ { "gameId", "state", "tag", "username", "timeStamp" }, ... ] }`
-2. **Single state object** – A game state object with `players`, `round`, and optionally `attack` (for attack snapshots).
+- **Layered chart views** – Toggle any combination of layers using checkboxes:
+  - **Health** – Both Phoenixborn's remaining health over time (line chart)
+  - **Dice advantage** – Unspent dice difference per turn, estimated from chat (bar chart, green/red). Each player starts with 10 dice per round.
+  - **Attacks** – When each player attacked and with how many units, with tooltips showing unit names (narrow bar chart)
+  - **Battlefield value** – Total dice cost of units on the battlefield for each player (dashed lines), plus the battlefield advantage as bars (orange/cyan). Tracks units entering play, being destroyed, removed from the game, and manual mode corrections.
 
-Replays with multiple snapshots (e.g. `tag: "defenders-declared"` during attacks and `tag: "end"` at game end) give a full timeline. With only the final state you get one point per view. See [docs/replay-format.md](docs/replay-format.md) for the full replay structure.
+  Layers can be freely combined — e.g. overlay battlefield advantage with dice advantage to compare resource investment vs tempo, or attacks with health to see the impact of each swing.
+
+## How it works
+
+The x-axis represents **turns**, labeled as `R{round}.{turn} {player}` (e.g. `R1.4 Schmendrix`). Each data point is a snapshot of the game state at the end of that turn.
+
+**Dice tracking**: Every round, each player starts with 10 dice. The parser detects dice spending from two chat patterns — cost prefixes before actions and inline die use — and estimates unspent dice per turn.
+
+**Battlefield tracking**: When a unit enters play (`"puts UnitName (id) into play"`), the parser associates it with the dice cost from the preceding cost line (or 0 for free summons). When a unit is destroyed, removed from the game, or manually moved out of play, its dice value is subtracted.
 
 ## Hosting as a GitHub Page
 
-1. Push this repo to GitHub (or add `index.html` and optional `docs/` to a repo).
-2. In the repo: **Settings → Pages**.
-3. Under “Build and deployment”, choose **Deploy from a branch**.
-4. Select the branch (e.g. `main`) and folder **/ (root)** (so `index.html` is at the root of the site).
+1. Push this repo to GitHub.
+2. In the repo: **Settings > Pages**.
+3. Under "Build and deployment", choose **Deploy from a branch**.
+4. Select the branch (e.g. `main`) and folder **/ (root)**.
 5. Save. The page will be at `https://<username>.github.io/<repo>/`.
 
-No build step is required; the page is a single HTML file and loads Chart.js from a CDN.
+No build step is required — the page is a single HTML file that loads Chart.js from a CDN.
 
 ## Local use
 
-Open `index.html` in a browser (file protocol is fine). To use replays from ashteki.com you must first download the JSON (e.g. open `https://ashteki.com/api/game/<gameId>/replay` in the browser and save as `.json`), then load that file in the visualizer.
+Open `index.html` in any browser (file protocol works fine).
 
 ## License
 
