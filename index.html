@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ashteki Replay Visualizer</title>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -38,22 +37,6 @@
       font-size: 0.9rem;
       margin-bottom: 1.5rem;
     }
-    .subtitle a { color: var(--accent1); }
-    .upload-zone {
-      background: var(--surface);
-      border: 2px dashed var(--border);
-      border-radius: 12px;
-      padding: 2rem;
-      text-align: center;
-      margin-bottom: 1.5rem;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .upload-zone:hover, .upload-zone.dragover {
-      border-color: var(--accent1);
-      background: rgba(122, 162, 247, 0.08);
-    }
-    .upload-zone input[type="file"] { display: none; }
     .phoenixborn-cards {
       display: flex;
       gap: 1rem;
@@ -76,18 +59,28 @@
       margin-bottom: 1rem;
       flex-wrap: wrap;
     }
-    .chart-controls label {
+    .chart-controls .layer-label {
       color: var(--muted);
       font-size: 0.9rem;
+      margin-right: 0.25rem;
     }
-    .chart-controls select {
-      background: var(--surface);
+    .chart-controls .layer-cb {
       color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.4rem 0.75rem;
       font-size: 0.9rem;
       cursor: pointer;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.3rem 0.65rem;
+      user-select: none;
+    }
+    .chart-controls .layer-cb:has(input:checked) {
+      border-color: #7aa2f7;
+      background: rgba(122, 162, 247, 0.15);
+    }
+    .chart-controls .layer-cb input {
+      margin-right: 0.35rem;
+      accent-color: #7aa2f7;
     }
     .chart-container {
       background: var(--surface);
@@ -107,18 +100,6 @@
       margin-bottom: 1rem;
     }
     .hidden { display: none !important; }
-    .input-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
-    .input-tabs .tab {
-      background: var(--surface);
-      color: var(--muted);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.4rem 0.75rem;
-      font-size: 0.9rem;
-      cursor: pointer;
-    }
-    .input-tabs .tab:hover { color: var(--text); }
-    .input-tabs .tab.active { background: var(--accent1); color: var(--bg); border-color: var(--accent1); }
     .input-panel { margin-bottom: 1rem; }
     .chat-label { display: block; color: var(--muted); font-size: 0.9rem; margin-bottom: 0.25rem; }
     .chat-textarea {
@@ -146,24 +127,24 @@
     }
     .parse-btn:hover { filter: brightness(1.1); }
     .dice-na { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+    .game-result {
+      background: var(--surface);
+      border: 1px solid var(--accent2);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+    .game-result .winner-name { font-weight: 600; color: var(--accent2); }
+    .game-result .result-detail { color: var(--muted); }
   </style>
 </head>
 <body>
   <h1>Ashteki Replay Visualizer</h1>
-  <p class="subtitle">Import a replay JSON or paste a game chat log to see Phoenixborn, health, and attacks. Phoenixborn starting life uses the standard card values (health = middle stat).</p>
+  <p class="subtitle">Paste a game chat log to visualize health, dice advantage, and attacks turn by turn. Phoenixborn starting life uses the standard card values (health = middle stat).</p>
 
-  <div class="input-tabs" role="tablist">
-    <button type="button" id="tab-file" class="tab active" aria-selected="true" aria-controls="panel-file">Replay file</button>
-    <button type="button" id="tab-chat" class="tab" aria-selected="false" aria-controls="panel-chat">Game chat log</button>
-  </div>
-  <div id="panel-file" class="input-panel" role="tabpanel">
-    <div class="upload-zone" id="uploadZone" role="button" tabindex="0">
-      <input type="file" id="fileInput" accept=".ashteki,.json,application/json,.txt,text/plain" />
-      <p>Drop an <strong>.ashteki</strong> replay, JSON, or chat .txt here or click to choose</p>
-      <p style="color: var(--muted); font-size: 0.85rem;"><strong>.ashteki</strong> = downloaded replay (ZIP). JSON = API or state. .txt = game chat.</p>
-    </div>
-  </div>
-  <div id="panel-chat" class="input-panel hidden" role="tabpanel">
+  <div id="panel-chat" class="input-panel">
     <label for="chatInput" class="chat-label">Paste your game chat here (Ctrl+V or Cmd+V):</label>
     <textarea id="chatInput" class="chat-textarea" placeholder="Paste the full game chat from Ashteki here (e.g. Schmendrix brings Lulu Firststone to battle&#10;shadowfire brings Fiona Mercywind to battle&#10;Round 1&#10;...)"></textarea>
     <button type="button" id="parseChatBtn" class="parse-btn">Parse and visualize</button>
@@ -171,15 +152,15 @@
 
   <div id="errorBox" class="error hidden"></div>
   <div id="phoenixbornSection" class="phoenixborn-cards hidden"></div>
+  <div id="gameResultBox" class="game-result hidden"></div>
 
   <div id="chartSection" class="hidden">
     <div class="chart-controls">
-      <label for="viewSelect">Show:</label>
-      <select id="viewSelect">
-        <option value="dice">Dice advantage (unspent dice lead)</option>
-        <option value="health">Health remaining (both Phoenixborn)</option>
-        <option value="attacks">Attacks (units per attack)</option>
-      </select>
+      <span class="layer-label">Layers:</span>
+      <label class="layer-cb"><input type="checkbox" id="layerHealth" checked> Health</label>
+      <label class="layer-cb"><input type="checkbox" id="layerDice"> Dice advantage</label>
+      <label class="layer-cb"><input type="checkbox" id="layerAttacks"> Attacks</label>
+      <label class="layer-cb"><input type="checkbox" id="layerBattlefield"> Battlefield value</label>
       <span id="diceNaNote" class="dice-na hidden"></span>
     </div>
     <div class="chart-container">
@@ -189,20 +170,21 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', function () {
-      const uploadZone = document.getElementById('uploadZone');
-      const fileInput = document.getElementById('fileInput');
-      const errorBox = document.getElementById('errorBox');
-      const phoenixbornSection = document.getElementById('phoenixbornSection');
-      const chartSection = document.getElementById('chartSection');
-      const viewSelect = document.getElementById('viewSelect');
-      const canvas = document.getElementById('mainChart');
-      const diceNaNote = document.getElementById('diceNaNote');
+      var errorBox = document.getElementById('errorBox');
+      var phoenixbornSection = document.getElementById('phoenixbornSection');
+      var chartSection = document.getElementById('chartSection');
+      var layerHealth = document.getElementById('layerHealth');
+      var layerDice = document.getElementById('layerDice');
+      var layerAttacks = document.getElementById('layerAttacks');
+      var layerBattlefield = document.getElementById('layerBattlefield');
+      var canvas = document.getElementById('mainChart');
+      var diceNaNote = document.getElementById('diceNaNote');
 
-      let chart = null;
-      let replayData = null; // { snapshots: [...], playerNames: [name1, name2], phoenixborn: { name1: "Phoenixborn Name", name2: "..." } }
+      var chart = null;
+      var replayData = null;
 
       // Phoenixborn name -> starting life (middle stat: attack / life / spellboard)
-      const PHOENIXBORN_LIFE = {
+      var PHOENIXBORN_LIFE = {
         'Aradel Summergaard': 16, 'Arren Frostpeak': 15, 'Astrea': 19, 'Brennen Blackcloud': 16,
         'Coal Roarkwin': 15, 'Dimona Odinstar': 16, 'Echo Greystorm': 19, 'Fiona Mercywind': 15,
         'Harold Westraven': 16, 'Hope Everthorn': 17, 'Issa Brightmore': 18, 'James Endersight': 19,
@@ -226,583 +208,614 @@
         return 20;
       }
 
-      function countUnspentDice(playerState) {
-        if (!playerState || !Array.isArray(playerState.dice)) return 0;
-        return playerState.dice.filter(function (d) { return !d.exhausted; }).length;
-      }
-
-      function getHealth(playerState) {
-        if (!playerState || !playerState.phoenixborn) return null;
-        const pb = playerState.phoenixborn;
-        const life = pb.life != null ? pb.life : 0;
-        const damage = pb.damage != null ? pb.damage : 0;
-        const drowning = pb.drowningLevel != null ? pb.drowningLevel : 0;
-        return Math.max(0, life - damage - drowning);
-      }
-
-      function getAttackerName(state) {
-        if (!state.attack || state.attack.attackingPlayer == null) return null;
-        const id = state.attack.attackingPlayer;
-        const players = state.players || {};
-        for (const name of Object.keys(players)) {
-          if (players[name].id === id) return name;
-        }
-        return null;
-      }
-
-      function getAttackCount(state) {
-        if (!state.attack || !Array.isArray(state.attack.battles)) return 0;
-        return state.attack.battles.length;
-      }
-
-      function normalizeReplay(raw) {
-        let list = [];
-        if (Array.isArray(raw)) {
-          list = raw;
-        } else if (raw && raw.replay && Array.isArray(raw.replay)) {
-          list = raw.replay;
-        } else if (raw && raw.state) {
-          list = [{ state: raw.state, tag: raw.tag || 'end', timeStamp: raw.timeStamp }];
-        } else if (raw && raw.players && typeof raw.round === 'number') {
-          list = [{ state: raw, tag: 'end', timeStamp: new Date().toISOString() }];
-        } else {
-          return null;
-        }
-
-        const withState = list.map(function (doc) {
-          const state = doc.state || doc;
-          return {
-            state: state,
-            tag: doc.tag || 'end',
-            timeStamp: doc.timeStamp ? new Date(doc.timeStamp).getTime() : 0,
-            round: state.round != null ? state.round : 0
-          };
-        });
-
-        withState.sort(function (a, b) {
-          if (a.round !== b.round) return a.round - b.round;
-          return a.timeStamp - b.timeStamp;
-        });
-
-        const first = withState[0] && withState[0].state;
-        if (!first || !first.players) return null;
-
-        const playerNames = Object.keys(first.players).filter(function (k) {
-          return first.players[k].phoenixborn;
-        });
-        if (playerNames.length < 2) playerNames.push(...Object.keys(first.players).filter(function (k) { return !playerNames.includes(k); }));
-
-        const phoenixborn = {};
-        playerNames.forEach(function (name) {
-          const p = first.players[name];
-          phoenixborn[name] = (p && p.phoenixborn && p.phoenixborn.name) ? p.phoenixborn.name : name;
-        });
-
-        return {
-          snapshots: withState,
-          playerNames: playerNames,
-          phoenixborn: phoenixborn,
-          fromChat: false
-        };
-      }
-
       function parseChatLog(text) {
         if (!text || typeof text !== 'string') return null;
-        const lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
-        const playerToPb = {};
-        const pbToPlayer = {};
-        const playerNames = [];
-        for (let i = 0; i < lines.length; i++) {
-          const m = lines[i].match(/^(\S+)\s+brings\s+(.+?)\s+to battle\s*$/);
+        var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+
+        // Pass 1: extract players and Phoenixborn
+        var playerToPb = {};
+        var pbToPlayer = {};
+        var playerNames = [];
+        for (var i = 0; i < lines.length; i++) {
+          var m = lines[i].match(/^(\S+)\s+brings\s+(.+?)\s+to battle\s*$/);
           if (m) {
-            const player = m[1];
-            const pb = m[2].trim();
+            var player = m[1];
+            var pb = m[2].trim();
             playerToPb[player] = pb;
             pbToPlayer[pb] = player;
             if (playerNames.indexOf(player) === -1) playerNames.push(player);
           }
         }
         if (playerNames.length < 2) return null;
-        const p1 = playerNames[0];
-        const p2 = playerNames[1];
-        const life1 = getPhoenixbornLife(playerToPb[p1]);
-        const life2 = getPhoenixbornLife(playerToPb[p2]);
-        const health = {};
+
+        var p1 = playerNames[0];
+        var p2 = playerNames[1];
+        var life1 = getPhoenixbornLife(playerToPb[p1]);
+        var life2 = getPhoenixbornLife(playerToPb[p2]);
+        var health = {};
         health[p1] = life1;
         health[p2] = life2;
-        let currentRound = 0;
-        let pushedEnd = false;
-        const snapshots = [];
+        var diceSpent = {};
+        diceSpent[p1] = 0;
+        diceSpent[p2] = 0;
 
-        function makeState(round, h1, h2, attackPlayer, attackCount) {
-          const state = {
-            round: round,
-            players: {}
-          };
+        var currentRound = 0;
+        var currentTurnNum = 0;
+        var currentTurnPlayer = null;
+        var turnAttackPlayer = null;
+        var turnAttackCount = 0;
+        var turnAttackUnits = '';
+        var snapshots = [];
+        var gameResult = null;
+
+        // Battlefield tracking: { playername: { unitId: { name, cost } } }
+        var battlefield = {};
+        battlefield[p1] = {};
+        battlefield[p2] = {};
+        var pendingDiceCost = 0;
+        var pendingDicePlayer = null;
+
+        function makeState(attackPlayer, attackCount) {
+          var state = { round: currentRound, players: {} };
           [p1, p2].forEach(function (p, idx) {
-            const h = p === p1 ? h1 : h2;
-            const life = p === p1 ? life1 : life2;
+            var h = health[p];
+            var life = p === p1 ? life1 : life2;
+            var spent = diceSpent[p] || 0;
+            var unspent = Math.max(0, 10 - spent);
+            var dice = [];
+            for (var d = 0; d < unspent; d++) dice.push({ exhausted: false });
+            for (var d = 0; d < spent; d++) dice.push({ exhausted: true });
+            // Battlefield value
+            var bf = battlefield[p];
+            var bfUnits = Object.keys(bf).length;
+            var bfValue = 0;
+            for (var bk in bf) { bfValue += bf[bk].cost; }
             state.players[p] = {
               id: idx,
               name: p,
               phoenixborn: { name: playerToPb[p], life: life, damage: Math.max(0, life - h), drowningLevel: 0 },
-              dice: []
+              dice: dice,
+              battlefieldUnits: bfUnits,
+              battlefieldValue: bfValue
             };
           });
-          if (attackPlayer != null && attackCount != null && attackCount > 0) {
-            const id = attackPlayer === p1 ? 0 : 1;
+          if (attackPlayer != null && attackCount > 0) {
+            var id = attackPlayer === p1 ? 0 : 1;
             state.attack = { attackingPlayer: id, battles: new Array(attackCount) };
           }
           return state;
         }
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const roundMatch = line.match(/^Round\s+(\d+)\s*$/);
+        function flushTurn() {
+          if (currentTurnPlayer == null) return;
+          snapshots.push({
+            state: makeState(turnAttackPlayer, turnAttackCount),
+            turnLabel: 'R' + currentRound + '.' + currentTurnNum + ' ' + currentTurnPlayer,
+            tag: 'turn',
+            attackUnits: turnAttackUnits || ''
+          });
+          turnAttackPlayer = null;
+          turnAttackCount = 0;
+          turnAttackUnits = '';
+        }
+
+        // Pass 2: parse events turn by turn
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+
+          // Round start
+          var roundMatch = line.match(/^Round\s+(\d+)\s*$/);
           if (roundMatch) {
+            flushTurn();
             currentRound = parseInt(roundMatch[1], 10);
+            currentTurnPlayer = null;
+            currentTurnNum = 0;
+            diceSpent[p1] = 0;
+            diceSpent[p2] = 0;
             snapshots.push({
-              state: makeState(currentRound, health[p1], health[p2], null, 0),
-              tag: 'round',
-              round: currentRound
+              state: makeState(null, 0),
+              turnLabel: 'R' + currentRound + ' start',
+              tag: 'round'
             });
             continue;
           }
-          const attackMatch = line.match(/^(\S+)\s+attacks\s+.+with\s+(\d+)\s+units?\s*$/);
+
+          // Turn start
+          var turnMatch = line.match(/^Turn\s+(\d+)\s+-\s+(\S+)\s*$/);
+          if (turnMatch) {
+            flushTurn();
+            currentTurnNum = parseInt(turnMatch[1], 10);
+            currentTurnPlayer = turnMatch[2];
+            turnAttackPlayer = null;
+            turnAttackCount = 0;
+            turnAttackUnits = '';
+            continue;
+          }
+
+          // Attack (accumulated into current turn)
+          var attackMatch = line.match(/^(\S+)\s+attacks\s+.+with\s+(\d+)\s+units?:\s*(.+)$/);
           if (attackMatch) {
-            const attacker = attackMatch[1];
-            const count = parseInt(attackMatch[2], 10);
+            var attacker = attackMatch[1];
+            var count = parseInt(attackMatch[2], 10);
             if (playerNames.indexOf(attacker) !== -1) {
-              snapshots.push({
-                state: makeState(currentRound, health[p1], health[p2], attacker, count),
-                tag: 'defenders-declared',
-                round: currentRound
-              });
+              turnAttackPlayer = attacker;
+              turnAttackCount = count;
+              turnAttackUnits = attackMatch[3].replace(/\s*\(\d+\)/g, '').trim();
             }
             continue;
           }
-          for (const pbName of Object.keys(pbToPlayer)) {
-            const escaped = pbName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const damageMatch = line.match(new RegExp('^' + escaped + '\\s+receives\\s+(\\d+)\\s+damage', 'i'));
+
+          // Phoenixborn damage (accumulated into current turn)
+          for (var j = 0; j < Object.keys(pbToPlayer).length; j++) {
+            var pbName = Object.keys(pbToPlayer)[j];
+            var escaped = pbName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var damageMatch = line.match(new RegExp('^' + escaped + '\\s+(?:receives|takes)\\s+(\\d+)\\s+damage', 'i'));
             if (damageMatch) {
-              const amount = parseInt(damageMatch[1], 10);
-              const player = pbToPlayer[pbName];
-              health[player] = Math.max(0, health[player] - amount);
-              snapshots.push({
-                state: makeState(currentRound, health[p1], health[p2], null, 0),
-                tag: 'damage',
-                round: currentRound
-              });
+              var amount = parseInt(damageMatch[1], 10);
+              var damagedPlayer = pbToPlayer[pbName];
+              health[damagedPlayer] = Math.max(0, health[damagedPlayer] - amount);
               break;
             }
           }
-          if (!pushedEnd && (/has won the game\s*$/.test(line) || /concedes\s*$/.test(line))) {
-            pushedEnd = true;
+
+          // Game end
+          var concedeMatch = line.match(/^(\S+)\s+concedes\s*$/);
+          if (concedeMatch) {
+            gameResult = { method: 'concession', conceder: concedeMatch[1], round: currentRound, turn: currentTurnNum };
+            continue;
+          }
+          var winMatch = line.match(/^(\S+)\s+has won the game\s*$/);
+          if (winMatch) {
+            gameResult = gameResult || { method: 'defeat', round: currentRound, turn: currentTurnNum };
+            gameResult.winner = winMatch[1];
+            gameResult.winnerPb = playerToPb[winMatch[1]] || winMatch[1];
+            flushTurn();
+            currentTurnPlayer = null;
             snapshots.push({
-              state: makeState(currentRound, health[p1], health[p2], null, 0),
-              tag: 'end',
-              round: currentRound
+              state: makeState(null, 0),
+              turnLabel: 'End',
+              tag: 'end'
             });
+            break;
+          }
+
+          // Dice spending: Pattern A - dice cost prefix
+          var diceCostMatch = line.match(/^(.+?)\s*:\s*(\S+)\s+(?:plays|uses)\s/);
+          if (diceCostMatch && /die/.test(diceCostMatch[1])) {
+            var spender = diceCostMatch[2];
+            var diceCount = diceCostMatch[1].split(',').length;
+            if (diceSpent[spender] != null) {
+              diceSpent[spender] += diceCount;
+            }
+            // Track pending cost for battlefield
+            pendingDiceCost = diceCount;
+            pendingDicePlayer = spender;
+          }
+
+          // Dice spending: Pattern B - inline die use
+          var inlineDieMatch = line.match(/^(\S+)\s+uses\s+\w+\s+(?:basic|class|power)\s+die\s+to\s/);
+          if (inlineDieMatch) {
+            var spender2 = inlineDieMatch[1];
+            if (diceSpent[spender2] != null) {
+              diceSpent[spender2] += 1;
+            }
+          }
+
+          // Battlefield: unit enters play
+          var entersMatch = line.match(/^(\S+)\s+puts\s+(.+?)\s+\((\d+)\)\s+into play/);
+          if (entersMatch) {
+            var owner = entersMatch[1];
+            var unitName = entersMatch[2];
+            var unitId = entersMatch[3];
+            if (battlefield[owner]) {
+              var cost = (owner === pendingDicePlayer && pendingDiceCost > 0) ? pendingDiceCost : 0;
+              battlefield[owner][unitId] = { name: unitName, cost: cost };
+              pendingDiceCost = 0;
+              pendingDicePlayer = null;
+            }
+          }
+
+          // Battlefield: unit destroyed or removed
+          var destroyedMatch = line.match(/^(.+?)\s+\((\d+)\)\s+(?:is destroyed|is removed from play|leaves play)/) ||
+            line.match(/remove\s+(.+?)\s+\((\d+)\)\s+from the game/);
+          if (destroyedMatch) {
+            var deadId = destroyedMatch[2];
+            // Find which player owns this unit
+            if (battlefield[p1][deadId]) {
+              delete battlefield[p1][deadId];
+            } else if (battlefield[p2][deadId]) {
+              delete battlefield[p2][deadId];
+            }
+          }
+
+          // Battlefield: manual move from play area to discard/hand/deck (unit leaves)
+          var manualOutMatch = line.match(/manually moves\s+(.+?)\s+\((\d+)\)\s+from their play area/);
+          if (manualOutMatch) {
+            var manualId = manualOutMatch[2];
+            if (battlefield[p1][manualId]) {
+              delete battlefield[p1][manualId];
+            } else if (battlefield[p2][manualId]) {
+              delete battlefield[p2][manualId];
+            }
+          }
+
+          // Battlefield: manual move into play area (unit enters, cost 0 since it's a correction)
+          var manualInMatch = line.match(/^(\S+)\s+manually moves\s+(.+?)\s+from their (?:archives|discard|hand)\s+to their play area/);
+          if (manualInMatch) {
+            var manualOwner = manualInMatch[1];
+            var manualName = manualInMatch[2];
+            // Try to find the unit ID from subsequent lines (attaches or adds damage)
+            // For now assign a temp ID based on name; will be updated if we see an ID later
+            if (battlefield[manualOwner]) {
+              // Use a generated key; look ahead for real ID
+              var foundId = null;
+              for (var la = i + 1; la < Math.min(i + 5, lines.length); la++) {
+                var idMatch = lines[la].match(new RegExp(manualName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+\\((\\d+)\\)'));
+                if (idMatch) { foundId = idMatch[1]; break; }
+              }
+              if (foundId) {
+                battlefield[manualOwner][foundId] = { name: manualName, cost: 0 };
+              }
+            }
           }
         }
 
+        // Flush any remaining open turn (if game ended without explicit end line)
+        flushTurn();
+
         if (snapshots.length === 0) return null;
-        const phoenixborn = {};
+        var phoenixborn = {};
         phoenixborn[p1] = playerToPb[p1] || p1;
         phoenixborn[p2] = playerToPb[p2] || p2;
         return {
           snapshots: snapshots,
           playerNames: playerNames,
           phoenixborn: phoenixborn,
-          fromChat: true
+          gameResult: gameResult
         };
       }
 
       function buildSeries() {
         if (!replayData) return null;
-        const snapshots = replayData.snapshots;
-        const [p1, p2] = replayData.playerNames;
-        const labels = [];
-        const diceAdv = [];   // P1 - P2 unspent
-        const health1 = [];
-        const health2 = [];
-        const attackRound = [];
-        const attackCount = [];
-        const attackPlayer = [];
+        var snapshots = replayData.snapshots;
+        var p1 = replayData.playerNames[0];
+        var p2 = replayData.playerNames[1];
+        var labels = [];
+        var diceAdv = [];
+        var health1 = [];
+        var health2 = [];
+        var attackCount = [];
+        var attackPlayer = [];
+        var attackUnits = [];
+        var bfValue1 = [];
+        var bfValue2 = [];
+        var bfValueAdv = [];
 
-        snapshots.forEach(function (s, i) {
-          const state = s.state;
-          const round = state.round != null ? state.round : i + 1;
-          let label;
-          if (replayData.fromChat) {
-            if (s.tag === 'defenders-declared') label = 'R' + round + ' attack';
-            else if (s.tag === 'round') label = 'R' + round + ' start';
-            else if (s.tag === 'damage') label = 'R' + round + ' dmg';
-            else if (s.tag === 'end') label = 'R' + round + ' end';
-            else label = 'R' + round;
-          } else {
-            label = s.tag === 'defenders-declared' ? 'R' + round + ' attack' : 'R' + round;
-          }
-          labels.push(label);
+        for (var i = 0; i < snapshots.length; i++) {
+          var s = snapshots[i];
+          var state = s.state;
+          labels.push(s.turnLabel);
 
-          const pl1 = state.players && state.players[p1];
-          const pl2 = state.players && state.players[p2];
-          const u1 = countUnspentDice(pl1);
-          const u2 = countUnspentDice(pl2);
+          var pl1 = state.players && state.players[p1];
+          var pl2 = state.players && state.players[p2];
+
+          // Dice advantage
+          var u1 = pl1 && Array.isArray(pl1.dice) ? pl1.dice.filter(function (d) { return !d.exhausted; }).length : 0;
+          var u2 = pl2 && Array.isArray(pl2.dice) ? pl2.dice.filter(function (d) { return !d.exhausted; }).length : 0;
           diceAdv.push(u1 - u2);
-          const h1 = getHealth(pl1);
-          const h2 = getHealth(pl2);
-          health1.push(h1 != null ? h1 : 0);
-          health2.push(h2 != null ? h2 : 0);
 
-          const attName = getAttackerName(state);
-          const attCount = getAttackCount(state);
-          if (attName && attCount > 0) {
-            attackRound.push(round);
-            attackCount.push(attCount);
+          // Battlefield value
+          var bv1 = pl1 ? (pl1.battlefieldValue || 0) : 0;
+          var bv2 = pl2 ? (pl2.battlefieldValue || 0) : 0;
+          bfValue1.push(bv1);
+          bfValue2.push(bv2);
+          bfValueAdv.push(bv1 - bv2);
+
+          // Health
+          var h1 = pl1 && pl1.phoenixborn ? Math.max(0, pl1.phoenixborn.life - (pl1.phoenixborn.damage || 0) - (pl1.phoenixborn.drowningLevel || 0)) : 0;
+          var h2 = pl2 && pl2.phoenixborn ? Math.max(0, pl2.phoenixborn.life - (pl2.phoenixborn.damage || 0) - (pl2.phoenixborn.drowningLevel || 0)) : 0;
+          health1.push(h1);
+          health2.push(h2);
+
+          // Attacks
+          if (state.attack && state.attack.attackingPlayer != null && Array.isArray(state.attack.battles) && state.attack.battles.length > 0) {
+            var attId = state.attack.attackingPlayer;
+            var attName = null;
+            var playerKeys = Object.keys(state.players || {});
+            for (var j = 0; j < playerKeys.length; j++) {
+              if (state.players[playerKeys[j]].id === attId) { attName = playerKeys[j]; break; }
+            }
+            attackCount.push(state.attack.battles.length);
             attackPlayer.push(attName === p1 ? replayData.phoenixborn[p1] : replayData.phoenixborn[p2]);
+            attackUnits.push(s.attackUnits || '');
           } else {
-            attackRound.push(round);
             attackCount.push(0);
             attackPlayer.push(null);
+            attackUnits.push('');
           }
-        });
+        }
 
         return {
           labels: labels,
           diceAdvantage: diceAdv,
           health1: health1,
           health2: health2,
-          attackRound: attackRound,
           attackCount: attackCount,
-          attackPlayer: attackPlayer
+          attackPlayer: attackPlayer,
+          attackUnits: attackUnits,
+          bfValue1: bfValue1,
+          bfValue2: bfValue2,
+          bfValueAdv: bfValueAdv
         };
       }
 
       function renderPhoenixborn() {
         phoenixbornSection.innerHTML = '';
         if (!replayData) return;
-        const { playerNames, phoenixborn } = replayData;
-        playerNames.forEach(function (name) {
-          const card = document.createElement('div');
+        var names = replayData.playerNames;
+        var pbs = replayData.phoenixborn;
+        for (var i = 0; i < names.length; i++) {
+          var card = document.createElement('div');
           card.className = 'phoenixborn-card';
-          card.innerHTML = '<div class="player">' + escapeHtml(name) + '</div><div class="name">' + escapeHtml(phoenixborn[name] || name) + '</div>';
+          card.innerHTML = '<div class="player">' + escapeHtml(names[i]) + '</div><div class="name">' + escapeHtml(pbs[names[i]] || names[i]) + '</div>';
           phoenixbornSection.appendChild(card);
-        });
+        }
         phoenixbornSection.classList.remove('hidden');
       }
 
       function escapeHtml(s) {
-        const div = document.createElement('div');
+        var div = document.createElement('div');
         div.textContent = s;
         return div.innerHTML;
       }
 
       function updateChart() {
-        const series = buildSeries();
+        var series = buildSeries();
         if (!series) return;
 
-        const view = viewSelect.value;
-        if (replayData.fromChat && view === 'dice') {
-          diceNaNote.textContent = 'Dice advantage is not available when reconstructing from a game chat log.';
+        var showHealth = layerHealth.checked;
+        var showDice = layerDice.checked;
+        var showAttacks = layerAttacks.checked;
+        var showBf = layerBattlefield.checked;
+
+        if (showDice || showBf) {
+          diceNaNote.textContent = 'Dice spending estimated from chat log (10 dice per player per round).';
           diceNaNote.classList.remove('hidden');
         } else {
           diceNaNote.classList.add('hidden');
         }
 
-        const [p1, p2] = replayData.playerNames;
-        const pb1 = replayData.phoenixborn[p1];
-        const pb2 = replayData.phoenixborn[p2];
+        var p1 = replayData.playerNames[0];
+        var p2 = replayData.playerNames[1];
+        var pb1 = replayData.phoenixborn[p1];
+        var pb2 = replayData.phoenixborn[p2];
 
         if (chart) chart.destroy();
 
-        const common = {
-          labels: series.labels,
+        var xGrid = { color: 'rgba(59, 66, 97, 0.5)' };
+        var xTicks = { color: '#565f89', maxRotation: 45 };
+        var yGrid = { color: 'rgba(59, 66, 97, 0.5)' };
+        var yTicks = { color: '#565f89' };
+
+        // Build datasets and scales dynamically based on checkboxes
+        var datasets = [];
+        var scales = { x: { grid: xGrid, ticks: xTicks } };
+        var needsLeftAxis = showHealth || showBf || showAttacks;
+        var needsRightAxis = showDice || showBf;
+
+        // Determine left axis label
+        var leftLabels = [];
+        if (showHealth) leftLabels.push('Health');
+        if (showBf) leftLabels.push('Battlefield value');
+        if (showAttacks) leftLabels.push('Attack units');
+
+        // Determine right axis label
+        var rightLabels = [];
+        if (showDice) rightLabels.push('Dice advantage');
+        if (showBf) rightLabels.push('Battlefield advantage');
+
+        if (needsLeftAxis) {
+          scales.yLeft = {
+            type: 'linear', position: 'left', grid: yGrid, ticks: yTicks, min: 0,
+            title: { display: true, text: leftLabels.join(' / '), color: '#565f89' }
+          };
+        }
+        if (needsRightAxis) {
+          scales.yRight = {
+            type: 'linear', position: 'right', grid: { drawOnChartArea: false }, ticks: yTicks,
+            title: { display: true, text: rightLabels.join(' / '), color: '#565f89' }
+          };
+        }
+
+        // Health layers (lines)
+        if (showHealth) {
+          datasets.push({
+            label: pb1 + ' health', type: 'line', data: series.health1,
+            borderColor: '#7aa2f7', backgroundColor: 'rgba(122, 162, 247, 0.1)',
+            fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1
+          });
+          datasets.push({
+            label: pb2 + ' health', type: 'line', data: series.health2,
+            borderColor: '#bb9af7', backgroundColor: 'rgba(187, 154, 247, 0.1)',
+            fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1
+          });
+        }
+
+        // Battlefield value layers (lines, dashed)
+        if (showBf) {
+          datasets.push({
+            label: pb1 + ' battlefield', type: 'line', data: series.bfValue1,
+            borderColor: '#7aa2f7', backgroundColor: 'rgba(122, 162, 247, 0.08)',
+            borderDash: [6, 3], fill: false, tension: 0.2, pointRadius: 2, yAxisID: 'yLeft', order: 1
+          });
+          datasets.push({
+            label: pb2 + ' battlefield', type: 'line', data: series.bfValue2,
+            borderColor: '#bb9af7', backgroundColor: 'rgba(187, 154, 247, 0.08)',
+            borderDash: [6, 3], fill: false, tension: 0.2, pointRadius: 2, yAxisID: 'yLeft', order: 1
+          });
+          datasets.push({
+            label: 'BF advantage (' + pb1 + ' − ' + pb2 + ')',
+            data: series.bfValueAdv,
+            backgroundColor: function (ctx) {
+              var v = ctx.raw;
+              return v > 0 ? 'rgba(255, 158, 100, 0.35)' : v < 0 ? 'rgba(125, 207, 255, 0.35)' : 'rgba(91, 96, 120, 0.2)';
+            },
+            borderColor: function (ctx) {
+              var v = ctx.raw;
+              return v > 0 ? 'rgba(255, 158, 100, 0.6)' : v < 0 ? 'rgba(125, 207, 255, 0.6)' : 'rgba(91, 96, 120, 0.4)';
+            },
+            borderWidth: 1, yAxisID: 'yRight', order: 3
+          });
+        }
+
+        // Dice advantage layer (bars)
+        if (showDice) {
+          datasets.push({
+            label: 'Dice advantage (' + pb1 + ' − ' + pb2 + ')',
+            data: series.diceAdvantage,
+            backgroundColor: function (ctx) {
+              var v = ctx.raw;
+              return v > 0 ? 'rgba(158, 206, 106, 0.35)' : v < 0 ? 'rgba(247, 118, 142, 0.35)' : 'rgba(91, 96, 120, 0.2)';
+            },
+            borderColor: function (ctx) {
+              var v = ctx.raw;
+              return v > 0 ? 'rgba(158, 206, 106, 0.6)' : v < 0 ? 'rgba(247, 118, 142, 0.6)' : 'rgba(91, 96, 120, 0.4)';
+            },
+            borderWidth: 1, yAxisID: 'yRight', order: 2
+          });
+        }
+
+        // Attack layer (narrow bars)
+        if (showAttacks) {
+          datasets.push({
+            label: 'Attack (units)', type: 'bar',
+            data: series.attackCount.map(function (c) { return c > 0 ? c : null; }),
+            backgroundColor: function (ctx) {
+              var who = series.attackPlayer[ctx.dataIndex];
+              if (!who) return 'transparent';
+              return who === pb1 ? 'rgba(122, 162, 247, 0.9)' : 'rgba(187, 154, 247, 0.9)';
+            },
+            borderColor: function (ctx) {
+              var who = series.attackPlayer[ctx.dataIndex];
+              if (!who) return 'transparent';
+              return who === pb1 ? '#7aa2f7' : '#bb9af7';
+            },
+            borderWidth: 2, yAxisID: 'yLeft', order: 0, barPercentage: 0.3
+          });
+        }
+
+        // If nothing checked, show a message
+        if (datasets.length === 0) {
+          if (chart) chart = null;
+          return;
+        }
+
+        // Build tooltip callback
+        var tooltipAfterLabel = function (ctx) {
+          var ds = ctx.dataset;
+          if (ds.label && ds.label.indexOf('Dice advantage') === 0) {
+            var v = ctx.raw;
+            if (v > 0) return pb1 + ' has ' + v + ' more unspent dice';
+            if (v < 0) return pb2 + ' has ' + (-v) + ' more unspent dice';
+            return 'Tied';
+          }
+          if (ds.label && ds.label.indexOf('BF advantage') === 0) {
+            var v = ctx.raw;
+            if (v > 0) return pb1 + ' has ' + v + ' more dice of units';
+            if (v < 0) return pb2 + ' has ' + (-v) + ' more dice of units';
+            return 'Tied on battlefield';
+          }
+          if (ds.label === 'Attack (units)') {
+            var who = series.attackPlayer[ctx.dataIndex];
+            if (who && ctx.raw > 0) {
+              var units = series.attackUnits[ctx.dataIndex];
+              return who + ' attacked with ' + ctx.raw + ' unit(s)' + (units ? ': ' + units : '');
+            }
+          }
+          if (ds.label && ds.label.indexOf('battlefield') !== -1) {
+            return ctx.raw + ' dice of units';
+          }
+          return '';
+        };
+
+        chart = new Chart(canvas, {
+          type: 'bar',
+          data: { labels: series.labels, datasets: datasets },
           options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: { display: view !== 'dice' }
+              legend: { display: true, labels: { color: '#565f89' } },
+              tooltip: { callbacks: { afterLabel: tooltipAfterLabel } }
             },
-            scales: {
-              x: {
-                grid: { color: 'rgba(59, 66, 97, 0.5)' },
-                ticks: { color: '#565f89', maxRotation: 45 }
-              },
-              y: {
-                grid: { color: 'rgba(59, 66, 97, 0.5)' },
-                ticks: { color: '#565f89' }
-            }
+            scales: scales
           }
-        };
+        });
+      }
 
-        if (view === 'dice') {
-          chart = new Chart(canvas, {
-            type: 'bar',
-            data: {
-              labels: series.labels,
-              datasets: [{
-                label: 'Dice advantage (' + pb1 + ' − ' + pb2 + ')',
-                data: series.diceAdvantage,
-                backgroundColor: function (ctx) {
-                  const v = ctx.raw;
-                  return v > 0 ? 'rgba(158, 206, 106, 0.7)' : v < 0 ? 'rgba(247, 118, 142, 0.7)' : 'rgba(91, 96, 120, 0.6)';
-                },
-                borderColor: function (ctx) {
-                  const v = ctx.raw;
-                  return v > 0 ? '#9ece6a' : v < 0 ? '#f7768e' : '#5b6078';
-                },
-                borderWidth: 1
-              }]
-            },
-            options: {
-              ...common.options,
-              plugins: {
-                ...common.options.plugins,
-                tooltip: {
-                  callbacks: {
-                    afterLabel: function (ctx) {
-                      const v = ctx.raw;
-                      if (v > 0) return pb1 + ' has ' + v + ' more unspent dice';
-                      if (v < 0) return pb2 + ' has ' + (-v) + ' more unspent dice';
-                      return 'Tied';
-                    }
-                  }
-                }
-              },
-              scales: {
-                ...common.options.scales,
-                y: {
-                  ...common.options.scales.y,
-                  title: { display: true, text: 'Unspent dice difference', color: '#565f89' }
-                }
-              }
-            }
-          });
-        } else if (view === 'health') {
-          chart = new Chart(canvas, {
-            type: 'line',
-            data: {
-              labels: series.labels,
-              datasets: [
-                { label: pb1, data: series.health1, borderColor: '#7aa2f7', backgroundColor: 'rgba(122, 162, 247, 0.1)', fill: true, tension: 0.2 },
-                { label: pb2, data: series.health2, borderColor: '#bb9af7', backgroundColor: 'rgba(187, 154, 247, 0.1)', fill: true, tension: 0.2 }
-              ]
-            },
-            options: {
-              ...common.options,
-              scales: {
-                ...common.options.scales,
-                y: {
-                  ...common.options.scales.y,
-                  min: 0,
-                  title: { display: true, text: 'Health remaining', color: '#565f89' }
-                }
-              }
-            }
-          });
-        } else {
-          chart = new Chart(canvas, {
-            type: 'bar',
-            data: {
-              labels: series.labels,
-              datasets: [{
-                label: 'Units attacking',
-                data: series.attackCount,
-                backgroundColor: function (ctx) {
-                  const who = series.attackPlayer[ctx.dataIndex];
-                  if (!who) return 'rgba(91, 96, 120, 0.4)';
-                  return who === pb1 ? 'rgba(122, 162, 247, 0.7)' : 'rgba(187, 154, 247, 0.7)';
-                },
-                borderColor: function (ctx) {
-                  const who = series.attackPlayer[ctx.dataIndex];
-                  if (!who) return '#5b6078';
-                  return who === pb1 ? '#7aa2f7' : '#bb9af7';
-                },
-                borderWidth: 1
-              }]
-            },
-            options: {
-              ...common.options,
-              plugins: {
-                ...common.options.plugins,
-                tooltip: {
-                  callbacks: {
-                    afterLabel: function (ctx) {
-                      const who = series.attackPlayer[ctx.dataIndex];
-                      if (who && ctx.raw > 0) return who + ' attacked with ' + ctx.raw + ' unit(s)';
-                      return '';
-                    }
-                  }
-                }
-              },
-              scales: {
-                ...common.options.scales,
-                y: {
-                  ...common.options.scales.y,
-                  min: 0,
-                  title: { display: true, text: 'Units in attack', color: '#565f89' }
-                }
-              }
-            }
-          });
+      function renderGameResult() {
+        var box = document.getElementById('gameResultBox');
+        if (!replayData || !replayData.gameResult) {
+          box.classList.add('hidden');
+          return;
         }
+        var r = replayData.gameResult;
+        var text = '<span class="winner-name">' + escapeHtml(r.winnerPb || r.winner) + '</span> wins';
+        text += ' <span class="result-detail">Round ' + r.round + ', Turn ' + r.turn;
+        if (r.method === 'concession') {
+          text += ' by concession';
+        }
+        text += '</span>';
+        box.innerHTML = text;
+        box.classList.remove('hidden');
       }
 
       function onReplayLoaded(data) {
         clearError();
         replayData = data;
         renderPhoenixborn();
+        renderGameResult();
         chartSection.classList.remove('hidden');
         updateChart();
       }
 
-      function handleFile(file) {
-        if (!file) return;
-        const name = file.name.toLowerCase();
-        const isAshteki = name.endsWith('.ashteki');
-        const isTxt = name.endsWith('.txt') || file.type === 'text/plain';
-        const isJson = name.endsWith('.json') || file.type === 'application/json';
-        if (!isAshteki && !isTxt && !isJson) {
-          showError('Please choose an .ashteki replay, .json, or .txt (game chat) file.');
-          return;
-        }
-        if (isAshteki) {
-          if (typeof JSZip === 'undefined') {
-            showError('JSZip failed to load. Open this page over http(s) or check the console.');
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = function () {
-            JSZip.loadAsync(reader.result)
-              .then(function (zip) {
-                const replayName = Object.keys(zip.files).find(function (k) { return k.endsWith('.replay'); }) || Object.keys(zip.files)[0];
-                if (!replayName) throw new Error('No replay file in archive');
-                return zip.files[replayName].async('string');
-              })
-              .then(function (text) {
-                const parsed = JSON.parse(text);
-                const normalized = normalizeReplay(parsed);
-                if (!normalized) throw new Error('Unknown replay format inside .ashteki');
-                if (!normalized.snapshots.length) throw new Error('No replay snapshots in file');
-                onReplayLoaded(normalized);
-              })
-              .catch(function (e) {
-                showError(e && e.message ? e.message : 'Could not read .ashteki file. It should be a ZIP containing a .replay JSON.');
-              });
-          };
-          reader.readAsArrayBuffer(file);
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = function () {
-          const text = reader.result;
-          if (isTxt) {
-            const normalized = parseChatLog(text);
-            if (!normalized) {
-              showError('Could not parse game chat. Ensure it includes "X brings Y to battle" and "Round N" lines.');
-              return;
-            }
-            if (!normalized.snapshots.length) {
-              showError('No round or attack events found in the chat log.');
-              return;
-            }
-            onReplayLoaded(normalized);
-          } else {
-            try {
-              const parsed = JSON.parse(text);
-              const normalized = normalizeReplay(parsed);
-              if (!normalized) {
-                showError('Unknown replay format. Use API response from /api/game/:id/replay or a single state object with players and round.');
-                return;
-              }
-              if (!normalized.snapshots.length) {
-                showError('No replay snapshots found.');
-                return;
-              }
-              onReplayLoaded(normalized);
-            } catch (e) {
-              showError('Invalid JSON: ' + e.message);
-            }
-          }
-        };
-        reader.readAsText(file);
-      }
-
-      uploadZone.addEventListener('click', function (e) { e.preventDefault(); fileInput.click(); });
-      uploadZone.addEventListener('dragover', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        uploadZone.classList.add('dragover');
+      [layerHealth, layerDice, layerAttacks, layerBattlefield].forEach(function (cb) {
+        cb.addEventListener('change', updateChart);
       });
-      uploadZone.addEventListener('dragleave', function (e) {
-        e.preventDefault();
-        uploadZone.classList.remove('dragover');
-      });
-      uploadZone.addEventListener('drop', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        uploadZone.classList.remove('dragover');
-        const files = e.dataTransfer && e.dataTransfer.files;
-        const file = files && files.length ? files[0] : null;
-        if (file) handleFile(file);
-      });
-      fileInput.addEventListener('change', function () {
-        const file = fileInput.files && fileInput.files[0];
-        if (file) handleFile(file);
-      });
-      viewSelect.addEventListener('change', updateChart);
-
-      function showPanel(panelId) {
-        var allPanels = document.querySelectorAll('[role="tabpanel"]');
-        for (var i = 0; i < allPanels.length; i++) {
-          allPanels[i].classList.add('hidden');
-        }
-        var panel = document.getElementById(panelId);
-        if (panel) panel.classList.remove('hidden');
-        var tabFile = document.getElementById('tab-file');
-        var tabChat = document.getElementById('tab-chat');
-        if (tabFile && tabChat) {
-          tabFile.classList.remove('active');
-          tabFile.setAttribute('aria-selected', 'false');
-          tabChat.classList.remove('active');
-          tabChat.setAttribute('aria-selected', 'false');
-          if (panelId === 'panel-file') {
-            tabFile.classList.add('active');
-            tabFile.setAttribute('aria-selected', 'true');
-          } else {
-            tabChat.classList.add('active');
-            tabChat.setAttribute('aria-selected', 'true');
-          }
-        }
-      }
-
-      var tabFileBtn = document.getElementById('tab-file');
-      var tabChatBtn = document.getElementById('tab-chat');
-      if (tabFileBtn) {
-        tabFileBtn.addEventListener('click', function () { showPanel('panel-file'); });
-      }
-      if (tabChatBtn) {
-        tabChatBtn.addEventListener('click', function () { showPanel('panel-chat'); });
-      }
 
       document.getElementById('parseChatBtn').addEventListener('click', function () {
-        const text = document.getElementById('chatInput').value.trim();
+        var text = document.getElementById('chatInput').value.trim();
         if (!text) {
           showError('Paste a game chat log first.');
           return;
         }
-        const normalized = parseChatLog(text);
+        var normalized = parseChatLog(text);
         if (!normalized) {
-          showError('Could not parse game chat. Ensure it includes "X brings Y to battle" and "Round N" lines.');
+          showError('Could not parse game chat. Ensure it includes "X brings Y to battle" and "Turn N - Player" lines.');
           return;
         }
         if (!normalized.snapshots.length) {
-          showError('No round or attack events found in the chat log.');
+          showError('No turns found in the chat log.');
           return;
         }
         onReplayLoaded(normalized);
       });
+
+      if (window.location.search.indexOf('demo=1') !== -1) {
+        fetch('demo-chat.txt')
+          .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('Could not load demo-chat.txt')); })
+          .then(function (text) {
+            var chatInput = document.getElementById('chatInput');
+            if (chatInput) chatInput.value = text;
+            var normalized = parseChatLog(text.trim());
+            if (normalized && normalized.snapshots.length) {
+              onReplayLoaded(normalized);
+            }
+          })
+          .catch(function (e) {
+            showError('Demo failed: ' + (e && e.message ? e.message : 'load demo-chat.txt with ?demo=1 when serving over http.'));
+          });
+      }
     });
   </script>
 </body>
