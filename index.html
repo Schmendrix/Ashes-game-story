@@ -141,11 +141,54 @@
       background: var(--surface);
       border-radius: 12px;
       padding: 1rem;
-      margin-bottom: 1.5rem;
       position: relative;
       height: 320px;
     }
-    .chart-container canvas { max-height: 300px; }
+    .chart-row {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      align-items: stretch;
+    }
+    .chart-container {
+      flex: 1;
+      min-width: 0;
+    }
+    .chart-container canvas { max-height: 300px; cursor: pointer; }
+    .chart-chat-side-panel {
+      width: 280px;
+      min-width: 280px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chart-chat-side-header {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .chart-chat-side-placeholder {
+      font-size: 0.88rem;
+      color: var(--muted);
+      font-style: italic;
+      flex: 1;
+    }
+    .chart-chat-side-panel.has-selection .chart-chat-side-placeholder { display: none; }
+    .chart-chat-side-content {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: var(--charcoal);
+      white-space: pre-wrap;
+      max-height: 280px;
+    }
+    .chart-chat-side-panel:not(.has-selection) .chart-chat-side-content { display: none; }
     .error {
       background: var(--accent-muted);
       border: 1px solid var(--red);
@@ -337,8 +380,15 @@
       <span id="diceNaNote" class="dice-na hidden"></span>
     </div>
     <div id="chartLegend" class="chart-legend"></div>
-    <div class="chart-container">
-      <canvas id="mainChart"></canvas>
+    <div class="chart-row">
+      <div class="chart-container">
+        <canvas id="mainChart"></canvas>
+      </div>
+      <aside id="chartChatSidePanel" class="chart-chat-side-panel">
+        <div class="chart-chat-side-header">Chat for turn</div>
+        <div class="chart-chat-side-placeholder">Click a turn on the chart to view its chat</div>
+        <div id="chartChatSideContent" class="chart-chat-side-content"></div>
+      </aside>
     </div>
   </div>
 
@@ -387,7 +437,10 @@
         'Blood puppet': -1, 'Blood Puppet': -1,
         'Weeping Spirit': -1,
         'Rubble Spirit': 1,
-        'Pack Wolf': 0.5, 'Pack wolf': 0.5
+        'Pack Wolf': 0.5, 'Pack wolf': 0.5,
+        'Ancestral Army': 1,
+        'Ancestor Spirit': 1,
+        'Salamander Monk Spirit': 0.5
       };
 
       // Phoenixborn name -> starting life (middle stat: attack / life / spellboard)
@@ -606,6 +659,23 @@
               break;
             }
           }
+          // Pattern A2: "X uses/plays Y to deal N damage to PBName" (skip if damage was prevented)
+          for (var j1 = 0; j1 < Object.keys(pbToPlayer).length; j1++) {
+            var pbName1 = Object.keys(pbToPlayer)[j1];
+            var escaped1 = pbName1.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var dealMatch = line.match(new RegExp('deal\\s+(\\d+)\\s+damage\\s+to\\s+' + escaped1, 'i'));
+            if (dealMatch && !/prevent(?:ed)?/i.test(line)) {
+              var dealAmt = parseInt(dealMatch[1], 10);
+              var damagedPlayer1 = pbToPlayer[pbName1];
+              health[damagedPlayer1] = Math.max(0, health[damagedPlayer1] - dealAmt);
+              // Attacker is the player who dealt; find them before "deal" (e.g. "X uses Y to deal" or "X plays Y to deal")
+              var dealerMatch = line.match(/(?:^[^:]*:\s*)?(\S+)\s+(?:uses\s+.+?\s+to\s+|plays\s+.+?\s+to\s+)?deal\s+\d+\s+damage/);
+              var dealer = dealerMatch ? playerNames.indexOf(dealerMatch[1]) : -1;
+              var attacker1 = dealer >= 0 ? playerNames[dealer] : (damagedPlayer1 === p1 ? p2 : p1);
+              if (stats[attacker1]) stats[attacker1].totalDamageDealt += dealAmt;
+              break;
+            }
+          }
           // Pattern B: "Player adds a damage to PBName" (manual mode)
           for (var j2 = 0; j2 < Object.keys(pbToPlayer).length; j2++) {
             var pbName2 = Object.keys(pbToPlayer)[j2];
@@ -635,6 +705,19 @@
                 var opp = destroyedPlayer === p1 ? p2 : p1;
                 if (stats[opp]) stats[opp].totalDamageDealt += remaining;
               }
+              break;
+            }
+          }
+          // Pattern D: "remove N wounds from PBName" / "uses Heal to remove N wounds from PBName"
+          for (var j4 = 0; j4 < Object.keys(pbToPlayer).length; j4++) {
+            var pbName4 = Object.keys(pbToPlayer)[j4];
+            var escaped4 = pbName4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var healMatch = line.match(new RegExp('remove\\s+(\\d+)\\s+wounds?\\s+from\\s+' + escaped4, 'i'));
+            if (healMatch) {
+              var healAmt = parseInt(healMatch[1], 10);
+              var healedPlayer = pbToPlayer[pbName4];
+              var maxLife = healedPlayer === p1 ? life1 : life2;
+              health[healedPlayer] = Math.min(maxLife, health[healedPlayer] + healAmt);
               break;
             }
           }
@@ -958,6 +1041,31 @@
         var series = buildSeries();
         if (!series) return;
 
+        // Filter out round starts from chart data (keep turn pairs only)
+        var chartLabels = [];
+        var chartIndices = [];
+        for (var fi = 0; fi < series.labels.length; fi++) {
+          if (series.labels[fi].indexOf('start') === -1) {
+            chartLabels.push(series.labels[fi]);
+            chartIndices.push(fi);
+          }
+        }
+        function filt(arr) { return chartIndices.map(function (idx) { return arr[idx]; }); }
+        var totalAdvFilt = series.totalAdvantage ? filt(series.totalAdvantage) : [];
+        var situationFilt = filt(series.situation);
+        var atkPlayerFilt = filt(series.attackPlayer);
+        var atkUnitsFilt = filt(series.attackUnits);
+        var chatLinesFilt = series.chatLines ? filt(series.chatLines) : [];
+
+        // Turns with resource swing > 2 (highlight in gold)
+        var swingHighlights = [];
+        for (var shi = 0; shi < totalAdvFilt.length; shi++) {
+          var prevAdv = shi > 0 ? (totalAdvFilt[shi - 1] || 0) : (totalAdvFilt[shi] || 0);
+          var currAdv = totalAdvFilt[shi] || 0;
+          var swing = Math.abs(currAdv - prevAdv);
+          if (swing >= 2) swingHighlights.push(shi);
+        }
+
         var showHealth = layerHealth.checked;
         var showTotalAdv = layerTotalAdv.checked;
         var showDice = layerDice.checked;
@@ -993,13 +1101,14 @@
         var rightMax = 5;
         if (showDice) rightMax = Math.max(rightMax, 10);
         if (showBf) {
-          for (var rbi = 0; rbi < series.bfValueAdv.length; rbi++) {
-            rightMax = Math.max(rightMax, Math.abs(series.bfValueAdv[rbi]));
+          var bfFilt = filt(series.bfValueAdv);
+          for (var rbi = 0; rbi < bfFilt.length; rbi++) {
+            rightMax = Math.max(rightMax, Math.abs(bfFilt[rbi]));
           }
         }
-        if (showTotalAdv && series.totalAdvantage) {
-          for (var tai = 0; tai < series.totalAdvantage.length; tai++) {
-            rightMax = Math.max(rightMax, Math.abs(series.totalAdvantage[tai]));
+        if (showTotalAdv && totalAdvFilt.length) {
+          for (var tai = 0; tai < totalAdvFilt.length; tai++) {
+            rightMax = Math.max(rightMax, Math.abs(totalAdvFilt[tai]));
           }
         }
 
@@ -1032,12 +1141,12 @@
         // Health layers (lines)
         if (showHealth) {
           datasets.push({
-            label: pb1 + ' health', type: 'line', data: series.health1,
+            label: pb1 + ' health', type: 'line', data: filt(series.health1),
             borderColor: CHART_P1, backgroundColor: CHART_P1_FILL,
             fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1
           });
           datasets.push({
-            label: pb2 + ' health', type: 'line', data: series.health2,
+            label: pb2 + ' health', type: 'line', data: filt(series.health2),
             borderColor: CHART_P2, backgroundColor: CHART_P2_FILL,
             fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1
           });
@@ -1046,18 +1155,18 @@
         // Battlefield value layers (lines, dashed)
         if (showBf) {
           datasets.push({
-            label: pb1 + ' battlefield', type: 'line', data: series.bfValue1,
+            label: pb1 + ' battlefield', type: 'line', data: filt(series.bfValue1),
             borderColor: CHART_P1, backgroundColor: CHART_P1_FILL,
             borderDash: [6, 3], fill: false, tension: 0.2, pointRadius: 2, yAxisID: 'yLeft', order: 1
           });
           datasets.push({
-            label: pb2 + ' battlefield', type: 'line', data: series.bfValue2,
+            label: pb2 + ' battlefield', type: 'line', data: filt(series.bfValue2),
             borderColor: CHART_P2, backgroundColor: CHART_P2_FILL,
             borderDash: [6, 3], fill: false, tension: 0.2, pointRadius: 2, yAxisID: 'yLeft', order: 1
           });
           datasets.push({
             label: 'BF advantage (' + pb1 + ' − ' + pb2 + ')',
-            data: series.bfValueAdv,
+            data: filt(series.bfValueAdv),
             backgroundColor: function (ctx) {
               var v = ctx.raw;
               return v > 0 ? 'rgba(13, 148, 136, 0.35)' : v < 0 ? 'rgba(180, 83, 9, 0.35)' : 'rgba(107, 114, 128, 0.2)';
@@ -1072,7 +1181,7 @@
 
         // Total resource advantage layer (floating bars: P2 [adv,0], P1 [0,adv] on right axis)
         if (showTotalAdv && series.totalAdvantage) {
-          var totalAdv = series.totalAdvantage;
+          var totalAdv = filt(series.totalAdvantage);
           var p2Bars = totalAdv.map(function (v) { return v < 0 ? [v, 0] : [0, 0]; });
           var p1Bars = totalAdv.map(function (v) { return v > 0 ? [0, v] : [0, 0]; });
           datasets.push({
@@ -1099,7 +1208,7 @@
         if (showDice) {
           datasets.push({
             label: 'Dice advantage (' + pb1 + ' − ' + pb2 + ')',
-            data: series.diceAdvantage,
+            data: filt(series.diceAdvantage),
             backgroundColor: function (ctx) {
               var v = ctx.raw;
               return v > 0 ? 'rgba(13, 148, 136, 0.35)' : v < 0 ? 'rgba(180, 83, 9, 0.35)' : 'rgba(107, 114, 128, 0.2)';
@@ -1114,16 +1223,17 @@
 
         // Attack layer (narrow bars)
         if (showAttacks) {
+          var atkCountFilt = filt(series.attackCount);
           datasets.push({
             label: 'Attack (units)', type: 'bar',
-            data: series.attackCount.map(function (c) { return c > 0 ? c : null; }),
+            data: atkCountFilt.map(function (c) { return c > 0 ? c : null; }),
             backgroundColor: function (ctx) {
-              var who = series.attackPlayer[ctx.dataIndex];
+              var who = atkPlayerFilt[ctx.dataIndex];
               if (!who) return 'transparent';
               return who === pb1 ? CHART_P1_ADV : CHART_P2_ADV;
             },
             borderColor: function (ctx) {
-              var who = series.attackPlayer[ctx.dataIndex];
+              var who = atkPlayerFilt[ctx.dataIndex];
               if (!who) return 'transparent';
               return who === pb1 ? CHART_P1 : CHART_P2;
             },
@@ -1142,7 +1252,7 @@
         var tooltipAfterLabel = function (ctx) {
           var ds = ctx.dataset;
           if (ds.label && ds.label.indexOf('Total resource') === 0) {
-            var v = series.totalAdvantage && series.totalAdvantage[ctx.dataIndex];
+            var v = totalAdvFilt[ctx.dataIndex];
             if (v === undefined) return '';
             if (v > 0) return pb1 + ' ahead by ' + v + ' (dice + battlefield)';
             if (v < 0) return pb2 + ' ahead by ' + (-v) + ' (dice + battlefield)';
@@ -1161,9 +1271,9 @@
             return 'Tied on battlefield';
           }
           if (ds.label === 'Attack (units)') {
-            var who = series.attackPlayer[ctx.dataIndex];
+            var who = atkPlayerFilt[ctx.dataIndex];
             if (who && ctx.raw > 0) {
-              var units = series.attackUnits[ctx.dataIndex];
+              var units = atkUnitsFilt[ctx.dataIndex];
               return who + ' attacked with ' + ctx.raw + ' unit(s)' + (units ? ': ' + units : '');
             }
           }
@@ -1175,7 +1285,7 @@
         var tooltipFooter = function (items) {
           if (!items.length) return '';
           var idx = items[0].dataIndex;
-          var sit = series.situation[idx];
+          var sit = situationFilt[idx];
           if (!sit) return '';
           return sit.desc;
         };
@@ -1221,6 +1331,20 @@
               }
             }
             ctx.restore();
+
+            // Gold bands for turns with resource swing > 2
+            if (swingHighlights && swingHighlights.length > 0) {
+              var barW = xScale.getPixelForValue(1) - xScale.getPixelForValue(0);
+              ctx.save();
+              ctx.fillStyle = 'rgba(201, 162, 39, 0.2)';
+              for (var si = 0; si < swingHighlights.length; si++) {
+                var idx = swingHighlights[si];
+                var x1 = xScale.getPixelForValue(idx) - barW / 2;
+                var x2 = xScale.getPixelForValue(idx) + barW / 2;
+                ctx.fillRect(x1, yTop, x2 - x1, yBottom - yTop);
+              }
+              ctx.restore();
+            }
           }
         };
 
@@ -1235,7 +1359,7 @@
         var ribbonPlugin = {
           id: 'stateRibbon',
           afterDraw: function (chart) {
-            var sit = series.situation;
+            var sit = situationFilt;
             var n = sit.length;
             if (n === 0) return;
             var ctx = chart.ctx;
@@ -1319,6 +1443,11 @@
           legendHtml += '<span class="legend-item">' + swatch(CHART_P1) + pb1 + ' attacks</span>';
           legendHtml += '<span class="legend-item">' + swatch(CHART_P2) + pb2 + ' attacks</span>';
         }
+        // Gold swing highlight legend (only if any exist)
+        if (swingHighlights.length > 0) {
+          legendHtml += '<span class="legend-sep"></span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(201, 162, 39, 0.5)') + 'Resource swing &ge;2</span>';
+        }
         // Strategy strip legend
         legendHtml += '<span class="legend-sep"></span>';
         var stKeys = Object.keys(series.stateLabels);
@@ -1327,12 +1456,32 @@
         }
         legendBox.innerHTML = legendHtml;
 
+        // Store for click handler (expandable chat panel)
+        var chartChatData = { labels: chartLabels, chatLines: chatLinesFilt };
+
         chart = new Chart(canvas, {
           type: 'bar',
-          data: { labels: series.labels, datasets: datasets },
+          data: { labels: chartLabels, datasets: datasets },
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            onClick: function (evt, elements) {
+              if (elements.length > 0) {
+                var idx = elements[0].index;
+                var panel = document.getElementById('chartChatSidePanel');
+                var header = panel.querySelector('.chart-chat-side-header');
+                var content = document.getElementById('chartChatSideContent');
+                var labels = chartChatData.labels;
+                var chat = chartChatData.chatLines && chartChatData.chatLines[idx];
+                header.textContent = 'Chat for ' + (labels[idx] || 'turn');
+                if (chat && chat.length > 0) {
+                  content.textContent = chat.join('\n');
+                } else {
+                  content.textContent = 'No chat for this turn.';
+                }
+                panel.classList.add('has-selection');
+              }
+            },
             plugins: {
               legend: { display: false },
               tooltip: {
@@ -1398,8 +1547,9 @@
         var finalH1 = series.health1[series.health1.length - 1] || 0;
         var finalH2 = series.health2[series.health2.length - 1] || 0;
 
-        function row(label, v1, v2) {
-          return '<tr><td class="stat-label">' + escapeHtml(label) + '</td><td class="num p1-col">' + v1 + '</td><td class="num p2-col">' + v2 + '</td></tr>';
+        function row(label, v1, v2, titleAttr) {
+          var td = '<td class="stat-label"' + (titleAttr ? ' title="' + escapeHtml(titleAttr) + '"' : '') + '>' + escapeHtml(label) + '</td>';
+          return '<tr>' + td + '<td class="num p1-col">' + v1 + '</td><td class="num p2-col">' + v2 + '</td></tr>';
         }
 
         var html = '<table class="stats-table">';
@@ -1407,7 +1557,7 @@
         html += '<tbody>';
         html += row('Starting health', startH1, startH2);
         html += row('Final health', finalH1, finalH2);
-        html += row('Damage dealt to PB', s1.totalDamageDealt, s2.totalDamageDealt);
+        html += row('Damage dealt to PB', s1.totalDamageDealt, s2.totalDamageDealt, 'Gross damage (sum of all damage events, not net of healing)');
         html += row('Total attacks', s1.totalAttacks, s2.totalAttacks);
         html += row('Total units attacking', s1.totalUnitsAttacking, s2.totalUnitsAttacking);
         html += row('Cards played', s1.cardsPlayed, s2.cardsPlayed);
@@ -1442,7 +1592,7 @@
         for (var i = 0; i < series.labels.length; i++) {
           var label = series.labels[i];
 
-          // Round start snapshots
+          // Round start snapshots (skip in narrative — rounds inferred from turn labels in chart data)
           if (label.indexOf('start') !== -1) {
             if (currentRound !== null) html += '</div>'; // close previous round
             var rNum = label.match(/R(\d+)/);
@@ -1657,16 +1807,24 @@
         }
         pbHtml += '</div>';
 
+        // Filter out round starts for export (match main chart)
+        var expIndices = [];
+        for (var ei = 0; ei < series.labels.length; ei++) {
+          if (series.labels[ei].indexOf('start') === -1) expIndices.push(ei);
+        }
+        function expFilt(arr) { return expIndices.map(function (i) { return arr[i]; }); }
+        var expSituation = expFilt(series.situation);
+
         // Strategy strip as colored HTML divs (merge consecutive same-desc segments like overlay)
         var stripHtml = '<div class="strip-row"><span class="strip-label">Game state</span><div class="strip-bar">';
-        var n = series.situation.length;
+        var n = expSituation.length;
         var ri = 0;
         while (ri < n) {
           var runStart = ri;
-          var runDesc = series.situation[ri].desc;
-          var runKey = series.situation[ri].key;
+          var runDesc = expSituation[ri].desc;
+          var runKey = expSituation[ri].key;
           ri++;
-          while (ri < n && series.situation[ri].desc === runDesc) ri++;
+          while (ri < n && expSituation[ri].desc === runDesc) ri++;
           var runCount = ri - runStart;
           var pct = (100 * runCount / n).toFixed(2);
           var bgColor = series.stateColors[runKey] || '#6b7280';
@@ -1690,20 +1848,22 @@
         // Stats HTML
         var statsHtml = document.getElementById('statsContent').innerHTML;
 
-        // Serialize series data as JSON for charts
+        var expLabels = expFilt(series.labels);
+
+        // Serialize series data as JSON for charts (filtered)
         var seriesJson = JSON.stringify({
-          labels: series.labels,
-          health1: series.health1,
-          health2: series.health2,
-          diceAdvantage: series.diceAdvantage,
-          attackCount: series.attackCount,
-          attackPlayer: series.attackPlayer,
-          attackUnits: series.attackUnits,
-          bfValue1: series.bfValue1,
-          bfValue2: series.bfValue2,
-          bfValueAdv: series.bfValueAdv,
-          totalAdvantage: series.totalAdvantage,
-          situation: series.situation,
+          labels: expLabels,
+          health1: expFilt(series.health1),
+          health2: expFilt(series.health2),
+          diceAdvantage: expFilt(series.diceAdvantage),
+          attackCount: expFilt(series.attackCount),
+          attackPlayer: expFilt(series.attackPlayer),
+          attackUnits: expFilt(series.attackUnits),
+          bfValue1: expFilt(series.bfValue1),
+          bfValue2: expFilt(series.bfValue2),
+          bfValueAdv: expFilt(series.bfValueAdv),
+          totalAdvantage: expFilt(series.totalAdvantage),
+          situation: expSituation,
           stateColors: series.stateColors,
           stateLabels: series.stateLabels
         });

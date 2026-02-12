@@ -8,10 +8,12 @@ A single-page tool to visualize [Ashteki](https://github.com/Ashteki/ashteki) ga
   - Player and Phoenixborn identification (`"X brings Y to battle"`)
   - Round and turn-pair structure (`"Round N"`, `"Turn N - Player"`)
   - Attacks and attacking units (`"Player attacks ... with K units: UnitName"`)
-  - Phoenixborn damage — three detection patterns:
-    - Standard: `"PhoenixbornName receives/takes N damage"`
+  - Phoenixborn damage and healing — detection patterns:
+    - Damage: `"PhoenixbornName receives/takes N damage"`
+    - Damage: `"X uses/plays Y to deal N damage to PhoenixbornName"` (e.g. `"Schmendrix uses Jessa Na Ni to deal 1 damage to Echo Greystorm"` or `"Schmendrix plays Final Cry to deal 2 damage to Echo Greystorm"`). Lines containing "prevent" or "prevented" are skipped.
     - Manual mode: `"Player adds a damage to PhoenixbornName"`
     - Safety net: `"PhoenixbornName is destroyed"` forces health to 0 if any damage was missed
+    - Healing: `"remove N wounds from PhoenixbornName"` (e.g. `"creevedog uses Heal to remove 2 wounds from Echo Greystorm"`)
   - Dice spending (cost prefixes like `"natural class die : Player plays ..."` and inline die use)
   - Cards played (`"Player plays CardName"`) and meditated (`"Player meditates CardName ..."`)
   - Unit summoning and destruction for battlefield tracking
@@ -42,7 +44,7 @@ A single-page tool to visualize [Ashteki](https://github.com/Ashteki/ashteki) ga
 
 - **Game summary statistics** – A table comparing both players across:
   - Starting and final health
-  - Damage dealt to opposing Phoenixborn
+  - Damage dealt to opposing Phoenixborn (gross damage; not net of healing)
   - Total attacks and units attacking
   - Cards played and meditated
   - Dice spent vs dice available
@@ -64,7 +66,7 @@ The x-axis represents **turn pairs**, labeled as `R{round}.{turn}` (e.g. `R1.4`)
 
 **Battlefield tracking**: When a unit enters play (`"puts UnitName (id) into play"`), the parser associates it with the dice cost from the preceding cost line (or uses a custom override for units like Raptor Herder, Pack Wolf, etc.). When a unit is destroyed, removed from the game, or manually moved out of play, its dice value is subtracted.
 
-**Damage tracking**: Three layers of detection ensure accurate health tracking. Standard `"takes/receives N damage"` lines handle most cases. Manual mode `"adds a damage"` lines catch corrections made during manual play. As a safety net, `"PBName is destroyed"` forces health to 0 if any damage was unaccounted for in the chat log.
+**Damage and healing tracking**: Damage is detected via `"takes/receives N damage"`, manual mode `"adds a damage"`, and the safety net `"PBName is destroyed"` (forces health to 0). Healing is detected via `"remove N wounds from PBName"` (e.g. from Heal cards). **Damage dealt to PB** in the game summary is gross damage (sum of all damage events), not net of healing.
 
 ## Visual design
 
