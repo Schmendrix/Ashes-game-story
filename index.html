@@ -3,23 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ashteki Replay Visualizer</title>
+  <title>Vermillion: Ashes Game Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #1a1b26;
-      --surface: #24283b;
-      --text: #c0caf5;
-      --muted: #565f89;
-      --accent1: #7aa2f7;
-      --accent2: #bb9af7;
-      --green: #9ece6a;
-      --red: #f7768e;
-      --border: #3b4261;
+      --bg: #f5f3ef;
+      --surface: #ebe8e2;
+      --text: #2c2c2c;
+      --muted: #6b7280;
+      --charcoal: #364050;
+      --accent: #b91c1c;
+      --vermilion: #b91c1c;
+      --accent-muted: rgba(185, 28, 28, 0.15);
+      --gold: #c9a227;
+      --gold-muted: rgba(201, 162, 39, 0.2);
+      --p1: #0d9488;
+      --p1-muted: rgba(13, 148, 136, 0.2);
+      --p2: #b45309;
+      --p2-muted: rgba(180, 83, 9, 0.2);
+      --green: #047857;
+      --red: #b91c1c;
+      --border: #d1d5db;
+      --grid: rgba(55, 65, 81, 0.25);
     }
     * { box-sizing: border-box; }
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: 'Poppins', 'Segoe UI', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       margin: 0;
@@ -27,10 +39,11 @@
       min-height: 100vh;
     }
     h1 {
+      font-family: 'Lora', serif;
       font-size: 1.5rem;
       font-weight: 600;
       margin: 0 0 0.5rem 0;
-      color: var(--accent1);
+      color: var(--vermilion);
     }
     .subtitle {
       color: var(--muted);
@@ -46,12 +59,17 @@
     .phoenixborn-card {
       background: var(--surface);
       border: 1px solid var(--border);
+      border-left: 4px solid var(--border);
       border-radius: 8px;
       padding: 0.75rem 1rem;
       min-width: 180px;
     }
+    .phoenixborn-card.p1-card { border-left-color: var(--p1); }
+    .phoenixborn-card.p2-card { border-left-color: var(--p2); }
     .phoenixborn-card .player { color: var(--muted); font-size: 0.85rem; }
-    .phoenixborn-card .name { font-weight: 600; color: var(--accent2); }
+    .phoenixborn-card .name { font-weight: 600; color: var(--charcoal); }
+    .phoenixborn-card.p1-card .name { color: var(--p1); }
+    .phoenixborn-card.p2-card .name { color: var(--p2); }
     .chart-controls {
       display: flex;
       align-items: center;
@@ -75,12 +93,12 @@
       user-select: none;
     }
     .chart-controls .layer-cb:has(input:checked) {
-      border-color: #7aa2f7;
-      background: rgba(122, 162, 247, 0.15);
+      border-color: var(--accent);
+      background: var(--accent-muted);
     }
     .chart-controls .layer-cb input {
       margin-right: 0.35rem;
-      accent-color: #7aa2f7;
+      accent-color: var(--accent);
     }
     .chart-legend {
       display: flex;
@@ -129,7 +147,7 @@
     }
     .chart-container canvas { max-height: 300px; }
     .error {
-      background: rgba(247, 118, 142, 0.15);
+      background: var(--accent-muted);
       border: 1px solid var(--red);
       color: var(--red);
       padding: 0.75rem 1rem;
@@ -154,8 +172,8 @@
     .chat-textarea::placeholder { color: var(--muted); }
     .parse-btn {
       margin-top: 0.5rem;
-      background: var(--accent1);
-      color: var(--bg);
+      background: var(--accent);
+      color: #fff;
       border: none;
       border-radius: 6px;
       padding: 0.5rem 1rem;
@@ -166,7 +184,7 @@
     .dice-na { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
     .game-result {
       background: var(--surface);
-      border: 1px solid var(--accent2);
+      border: 1px solid var(--accent);
       border-radius: 8px;
       padding: 0.6rem 1rem;
       margin-bottom: 1rem;
@@ -187,7 +205,7 @@
     .narrative-content {
       font-size: 0.88rem;
       line-height: 1.65;
-      color: #a9b1d6;
+      color: var(--charcoal);
     }
     .narrative-content .narr-round {
       margin-bottom: 0.75rem;
@@ -202,42 +220,33 @@
       margin-bottom: 0.3rem;
     }
     .narrative-content .narr-state {
+      display: inline-block;
+      padding: 0.15em 0.5em;
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-weight: 600;
+    }
+    .narrative-content .narr-pivot-label { color: var(--gold); }
+    .narrative-content .narr-swing-note {
+      font-size: 0.88rem;
+      color: var(--gold);
+      font-weight: 600;
+      margin-top: 0.2rem;
+    }
+    .narrative-content .narr-chat-swing {
+      font-size: 0.82rem;
       color: var(--muted);
       font-style: italic;
+      margin-top: 0.25rem;
+      margin-left: 0.5rem;
     }
     .narrative-content .narr-result {
       font-weight: 600;
-      color: var(--accent2);
+      color: var(--accent);
       margin-top: 0.5rem;
     }
-    .game-result .winner-name { font-weight: 600; color: var(--accent2); }
+    .game-result .winner-name { font-weight: 600; color: var(--gold); }
     .game-result .result-detail { color: var(--muted); }
-    .strategy-strip-box {
-      background: var(--surface);
-      border-radius: 0 0 12px 12px;
-      padding: 0.25rem 1rem 0.6rem;
-      margin-top: -1.2rem;
-    }
-    .strategy-strip-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 2px;
-    }
-    .strategy-strip-label {
-      color: var(--muted);
-      font-size: 0.72rem;
-      min-width: 110px;
-      text-align: right;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .strategy-strip-row canvas {
-      flex: 1;
-      height: 22px;
-      border-radius: 3px;
-    }
     .stats-section {
       background: var(--surface);
       border-radius: 12px;
@@ -276,17 +285,18 @@
     .stats-table .stat-label {
       color: var(--muted);
     }
-    .stats-table .p1-col { color: #7aa2f7; }
-    .stats-table .p2-col { color: #bb9af7; }
+    .stats-table .p1-col { color: var(--p1); }
+    .stats-table .p2-col { color: var(--p2); }
     .export-row {
       margin-bottom: 1rem;
       display: flex;
       justify-content: flex-end;
+      gap: 0.5rem;
     }
     .export-btn {
       background: var(--surface);
-      color: var(--accent1);
-      border: 1px solid var(--accent1);
+      color: var(--accent);
+      border: 1px solid var(--accent);
       border-radius: 6px;
       padding: 0.45rem 1.1rem;
       font-size: 0.9rem;
@@ -294,12 +304,12 @@
       transition: background 0.15s;
     }
     .export-btn:hover {
-      background: rgba(122, 162, 247, 0.15);
+      background: var(--accent-muted);
     }
   </style>
 </head>
 <body>
-  <h1>Ashteki Replay Visualizer</h1>
+  <h1>Vermillion: Ashes Game Report</h1>
   <p class="subtitle">Paste a game chat log to visualize health, dice advantage, and attacks turn by turn. Phoenixborn starting life uses the standard card values (health = middle stat).</p>
 
   <div id="panel-chat" class="input-panel">
@@ -311,35 +321,30 @@
   <div id="errorBox" class="error hidden"></div>
   <div id="phoenixbornSection" class="phoenixborn-cards hidden"></div>
   <div id="gameResultBox" class="game-result hidden"></div>
+  <div id="exportRow" class="export-row hidden">
+    <button type="button" id="exportBtn" class="export-btn">Export Report</button>
+    <button type="button" id="copyDiscordBtn" class="export-btn">Copy for Discord</button>
+  </div>
 
   <div id="chartSection" class="hidden">
     <div class="chart-controls">
       <span class="layer-label">Layers:</span>
       <label class="layer-cb"><input type="checkbox" id="layerHealth" checked> Health</label>
+      <label class="layer-cb"><input type="checkbox" id="layerTotalAdv"> Total resource advantage</label>
       <label class="layer-cb"><input type="checkbox" id="layerDice"> Dice advantage</label>
-      <label class="layer-cb"><input type="checkbox" id="layerAttacks"> Attacks</label>
       <label class="layer-cb"><input type="checkbox" id="layerBattlefield"> Battlefield value</label>
+      <label class="layer-cb"><input type="checkbox" id="layerAttacks"> Attacks</label>
       <span id="diceNaNote" class="dice-na hidden"></span>
     </div>
     <div id="chartLegend" class="chart-legend"></div>
     <div class="chart-container">
       <canvas id="mainChart"></canvas>
     </div>
-    <div id="strategyStripBox" class="strategy-strip-box">
-      <div class="strategy-strip-row">
-        <span class="strategy-strip-label">Game state</span>
-        <canvas id="stripCanvas" height="12"></canvas>
-      </div>
-    </div>
   </div>
 
   <div id="statsSection" class="stats-section hidden">
     <h2 class="stats-heading">Game Summary</h2>
     <div id="statsContent" class="stats-content"></div>
-  </div>
-
-  <div id="exportRow" class="export-row hidden">
-    <button type="button" id="exportBtn" class="export-btn">Export Report</button>
   </div>
 
   <div id="narrativeSection" class="narrative-section hidden" role="region" aria-label="Game narrative">
@@ -353,14 +358,37 @@
       var phoenixbornSection = document.getElementById('phoenixbornSection');
       var chartSection = document.getElementById('chartSection');
       var layerHealth = document.getElementById('layerHealth');
+      var layerTotalAdv = document.getElementById('layerTotalAdv');
       var layerDice = document.getElementById('layerDice');
-      var layerAttacks = document.getElementById('layerAttacks');
       var layerBattlefield = document.getElementById('layerBattlefield');
+      var layerAttacks = document.getElementById('layerAttacks');
       var canvas = document.getElementById('mainChart');
       var diceNaNote = document.getElementById('diceNaNote');
 
       var chart = null;
       var replayData = null;
+
+      // Theme colors for charts (naturalistic: teal P1, amber P2; red accent)
+      var CHART_P1 = '#0d9488';
+      var CHART_P1_FILL = 'rgba(13, 148, 136, 0.2)';
+      var CHART_P2 = '#b45309';
+      var CHART_P2_FILL = 'rgba(180, 83, 9, 0.2)';
+      var CHART_GRID = 'rgba(55, 65, 81, 0.25)';
+      var CHART_TICKS = '#6b7280';
+      var CHART_P1_ADV = 'rgba(13, 148, 136, 0.85)';
+      var CHART_P2_ADV = 'rgba(180, 83, 9, 0.85)';
+
+      // Unit name -> dice cost override (for units that enter under special conditions)
+      var UNIT_DICE_COST = {
+        'Raptor Herder': 0.5, 'Raptor hatchling': 0.5, 'Raptor Hatchling': 0.5,
+        'Pterra Herder': 0.5, 'Pterra hatchling': 0.5, 'Pterra Hatchling': 0.5,
+        'Hand of Spear': 1, 'Hand of Shield': 1,
+        'Luminous Seedling': 2, 'Brilliant Thorns': 2,
+        'Blood puppet': -1, 'Blood Puppet': -1,
+        'Weeping Spirit': -1,
+        'Rubble Spirit': 1,
+        'Pack Wolf': 0.5, 'Pack wolf': 0.5
+      };
 
       // Phoenixborn name -> starting life (middle stat: attack / life / spellboard)
       var PHOENIXBORN_LIFE = {
@@ -424,6 +452,7 @@
         var pairTurnNum = 0;
         var pairPlayersGone = 0;
         var pairAttacks = []; // array of { player, count, units } for each attack in this pair
+        var pairChatLines = [];
         var snapshots = [];
         var gameResult = null;
 
@@ -433,6 +462,7 @@
         battlefield[p2] = {};
         var pendingDiceCost = 0;
         var pendingDicePlayer = null;
+        var lastInlineDieKey = null; // heuristic: same player + same die type on consecutive lines = 1 die
 
         // Summary stat counters
         var stats = {};
@@ -486,19 +516,24 @@
             turnLabel: 'R' + currentRound + '.' + pairTurnNum,
             tag: 'turn',
             attackUnits: attackUnitsList.join(', '),
-            pairAttacks: pairAttacks.slice()
+            pairAttacks: pairAttacks.slice(),
+            chatLines: pairChatLines.slice()
           });
           pairAttacks = [];
+          pairChatLines = [];
         }
 
         // Pass 2: parse events turn by turn
         for (var i = 0; i < lines.length; i++) {
           var line = lines[i];
+          var roundMatch = line.match(/^Round\s+(\d+)\s*$/);
+          var turnMatch = line.match(/^Turn\s+(\d+)\s+-\s+(\S+)\s*$/);
+          if (!roundMatch && !turnMatch) pairChatLines.push(line);
 
           // Round start
-          var roundMatch = line.match(/^Round\s+(\d+)\s*$/);
           if (roundMatch) {
             flushPair();
+            lastInlineDieKey = null;
             // Accumulate dice spent this round into totals before resetting
             if (stats[p1]) stats[p1].totalDiceSpent += diceSpent[p1] || 0;
             if (stats[p2]) stats[p2].totalDiceSpent += diceSpent[p2] || 0;
@@ -518,17 +553,18 @@
           }
 
           // Turn start
-          var turnMatch = line.match(/^Turn\s+(\d+)\s+-\s+(\S+)\s*$/);
           if (turnMatch) {
             var newTurnNum = parseInt(turnMatch[1], 10);
             if (newTurnNum !== pairTurnNum) {
               // New pair — flush previous pair
               flushPair();
+              lastInlineDieKey = null;
               pairTurnNum = newTurnNum;
               pairPlayersGone = 1;
             } else {
               // Second player in the pair
               pairPlayersGone = 2;
+              lastInlineDieKey = null;
             }
             currentTurnNum = newTurnNum;
             currentTurnPlayer = turnMatch[2];
@@ -642,11 +678,18 @@
           }
 
           // Dice spending: Pattern B - inline die use
-          var inlineDieMatch = line.match(/^(\S+)\s+uses\s+\w+\s+(?:basic|class|power)\s+die\s+to\s/);
+          var inlineDieMatch = line.match(/^(\S+)\s+uses\s+(\w+)\s+(basic|class|power)\s+die\s+to\s/);
           if (inlineDieMatch) {
             var spender2 = inlineDieMatch[1];
-            if (diceSpent[spender2] != null) {
-              diceSpent[spender2] += 1;
+            var dieType = inlineDieMatch[2] + ' ' + inlineDieMatch[3]; // e.g. "time power"
+            var inlineKey = spender2 + ':' + dieType;
+            if (inlineKey === lastInlineDieKey) {
+              // Same die used for multiple actions (e.g. place + remove status token) — count once
+              lastInlineDieKey = inlineKey; // keep so we skip any further duplicates
+            } else {
+              // Different die or first use — count it
+              if (diceSpent[spender2] != null) diceSpent[spender2] += 1;
+              lastInlineDieKey = inlineKey;
             }
           }
 
@@ -669,7 +712,8 @@
             var unitName = entersMatch[2];
             var unitId = entersMatch[3];
             if (battlefield[owner]) {
-              var cost = (owner === pendingDicePlayer && pendingDiceCost > 0) ? pendingDiceCost : 0;
+              var cost = UNIT_DICE_COST[unitName] != null ? UNIT_DICE_COST[unitName]
+                : (owner === pendingDicePlayer && pendingDiceCost > 0 ? pendingDiceCost : 0);
               battlefield[owner][unitId] = { name: unitName, cost: cost };
               pendingDiceCost = 0;
               pendingDicePlayer = null;
@@ -700,22 +744,21 @@
             }
           }
 
-          // Battlefield: manual move into play area (unit enters, cost 0 since it's a correction)
+          // Battlefield: manual move into play area (unit enters)
           var manualInMatch = line.match(/^(\S+)\s+manually moves\s+(.+?)\s+from their (?:archives|discard|hand)\s+to their play area/);
           if (manualInMatch) {
             var manualOwner = manualInMatch[1];
             var manualName = manualInMatch[2];
             // Try to find the unit ID from subsequent lines (attaches or adds damage)
-            // For now assign a temp ID based on name; will be updated if we see an ID later
             if (battlefield[manualOwner]) {
-              // Use a generated key; look ahead for real ID
               var foundId = null;
               for (var la = i + 1; la < Math.min(i + 5, lines.length); la++) {
                 var idMatch = lines[la].match(new RegExp(manualName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+\\((\\d+)\\)'));
                 if (idMatch) { foundId = idMatch[1]; break; }
               }
               if (foundId) {
-                battlefield[manualOwner][foundId] = { name: manualName, cost: 0 };
+                var manualCost = UNIT_DICE_COST[manualName] != null ? UNIT_DICE_COST[manualName] : 0;
+                battlefield[manualOwner][foundId] = { name: manualName, cost: manualCost };
               }
             }
           }
@@ -752,6 +795,7 @@
         var bfValue1 = [];
         var bfValue2 = [];
         var bfValueAdv = [];
+        var chatLines = [];
         var pb1 = replayData.phoenixborn[p1];
         var pb2 = replayData.phoenixborn[p2];
 
@@ -801,35 +845,26 @@
             attackPlayer.push(null);
             attackUnits.push('');
           }
+          chatLines.push(s.chatLines || []);
         }
 
-        // Compute single game situation per turn pair
-        // Advantage states (attributed to leading player):
-        //   active-dominance, resource-dominance, aggro-control, board-control,
-        //   direct-aggression, holding-back, desperate-aggro
-        // Parity states (no player attributed):
-        //   full-parity, resource-parity, battlefield-parity, trading-blows
+        // Compute single game situation per turn pair (no damage; health advantage for compensation/parity)
+        // Net health: P1 − P2; advantaged player "6+ life behind" means add " With Compensation"
         var stateColors = {
-          'active-dominance': '#ff9e64',
-          'resource-dominance': '#9ece6a',
-          'aggro-control': '#e0af68',
-          'board-control': '#7dcfff',
-          'direct-aggression': '#f7768e',
-          'holding-back': '#565f89',
-          'contested': '#957fb8',
-          'full-parity': '#414868',
-          'trading-blows': '#c0a0db'
+          'dominant-position': '#c9a227',
+          'committed-advantage': '#059669',
+          'unrealized-advantage': '#0284c7',
+          'comfortable-parity': '#6b7280',
+          'parity': '#6b7280',
+          'split': '#7c3aed'
         };
         var stateLabels = {
-          'active-dominance': 'Active dominance',
-          'resource-dominance': 'Resource dominance',
-          'aggro-control': 'Aggro control',
-          'board-control': 'Board control',
-          'direct-aggression': 'Direct aggression',
-          'holding-back': 'Holding back',
-          'contested': 'Contested',
-          'full-parity': 'Full parity',
-          'trading-blows': 'Trading blows'
+          'dominant-position': 'Dominant Position',
+          'committed-advantage': 'Committed Advantage',
+          'unrealized-advantage': 'Unrealized Advantage',
+          'comfortable-parity': 'Comfortable Parity',
+          'parity': 'Parity',
+          'split': 'Split (Proactive / Reactive)'
         };
 
         // situation[]: { key, player (pb name or null), desc (full text) }
@@ -837,46 +872,47 @@
         for (var si = 0; si < labels.length; si++) {
           var da = diceAdv[si];
           var ba = bfValueAdv[si];
-          var p1DealtDmg = si > 0 && health2[si] < health2[si - 1];
-          var p2DealtDmg = si > 0 && health1[si] < health1[si - 1];
-          var anyDmg = p1DealtDmg || p2DealtDmg;
-
+          var healthAdv = (health1[si] || 0) - (health2[si] || 0); // P1 − P2
           var diceParity = da === 0;
           var bfParity = ba === 0;
 
+          function withCompensation(desc, advantagedIsP1) {
+            if (advantagedIsP1 && healthAdv <= -6) return desc + ' With Compensation';
+            if (!advantagedIsP1 && healthAdv >= 6) return desc + ' With Compensation';
+            return desc;
+          }
+
           if (diceParity && bfParity) {
-            if (anyDmg) situation.push({ key: 'trading-blows', player: null, desc: 'Trading blows' });
-            else situation.push({ key: 'full-parity', player: null, desc: 'Full parity' });
+            if (healthAdv > 0) situation.push({ key: 'comfortable-parity', player: pb1, desc: pb1 + ': Comfortable Parity' });
+            else if (healthAdv < 0) situation.push({ key: 'comfortable-parity', player: pb2, desc: pb2 + ': Comfortable Parity' });
+            else situation.push({ key: 'parity', player: null, desc: 'Parity' });
           } else if (diceParity && !bfParity) {
             var bfLeader = ba > 0 ? pb1 : pb2;
-            var bfLeaderDealt = ba > 0 ? p1DealtDmg : p2DealtDmg;
-            if (bfLeaderDealt) situation.push({ key: 'aggro-control', player: bfLeader, desc: bfLeader + ': Aggro control' });
-            else situation.push({ key: 'board-control', player: bfLeader, desc: bfLeader + ': Board control' });
+            var bfLeaderIsP1 = ba > 0;
+            situation.push({ key: 'committed-advantage', player: bfLeader, desc: withCompensation(bfLeader + ': Committed Advantage', bfLeaderIsP1) });
           } else if (!diceParity && bfParity) {
             var diceLeader = da > 0 ? pb1 : pb2;
-            var diceLeaderDealt = da > 0 ? p1DealtDmg : p2DealtDmg;
-            if (diceLeaderDealt) situation.push({ key: 'direct-aggression', player: diceLeader, desc: diceLeader + ': Direct aggression' });
-            else situation.push({ key: 'holding-back', player: diceLeader, desc: diceLeader + ': Holding back' });
+            var diceLeaderIsP1 = da > 0;
+            situation.push({ key: 'unrealized-advantage', player: diceLeader, desc: withCompensation(diceLeader + ': Unrealized Advantage', diceLeaderIsP1) });
           } else {
-            // Both split — check if same player leads both or different
             var diceLeaderIsP1 = da > 0;
             var bfLeaderIsP1 = ba > 0;
             if (diceLeaderIsP1 === bfLeaderIsP1) {
               var leader = diceLeaderIsP1 ? pb1 : pb2;
-              var leaderDealt = diceLeaderIsP1 ? p1DealtDmg : p2DealtDmg;
-              if (leaderDealt) situation.push({ key: 'active-dominance', player: leader, desc: leader + ': Active dominance' });
-              else situation.push({ key: 'resource-dominance', player: leader, desc: leader + ': Resource dominance' });
+              var leaderIsP1 = diceLeaderIsP1;
+              situation.push({ key: 'dominant-position', player: leader, desc: withCompensation(leader + ': Dominant Position', leaderIsP1) });
             } else {
-              // Different players lead dice vs BF
               var dLeader = diceLeaderIsP1 ? pb1 : pb2;
               var bLeader = bfLeaderIsP1 ? pb1 : pb2;
-              var desc = dLeader + ' holding back; ' + bLeader + ' controlling battlefield';
-              if (anyDmg) {
-                desc = dLeader + ' holding back; ' + bLeader + ' aggro control';
-              }
-              situation.push({ key: 'contested', player: null, desc: desc });
+              situation.push({ key: 'split', player: null, desc: 'Split, ' + dLeader + ' Proactive, ' + bLeader + ' Reactive' });
             }
           }
+        }
+
+        // Total resource advantage = unspent dice advantage + battlefield value advantage (Chess.com-style)
+        var totalAdvantage = [];
+        for (var ti = 0; ti < labels.length; ti++) {
+          totalAdvantage.push(diceAdv[ti] + bfValueAdv[ti]);
         }
 
         return {
@@ -890,6 +926,8 @@
           bfValue1: bfValue1,
           bfValue2: bfValue2,
           bfValueAdv: bfValueAdv,
+          totalAdvantage: totalAdvantage,
+          chatLines: chatLines,
           situation: situation,
           stateColors: stateColors,
           stateLabels: stateLabels
@@ -903,7 +941,7 @@
         var pbs = replayData.phoenixborn;
         for (var i = 0; i < names.length; i++) {
           var card = document.createElement('div');
-          card.className = 'phoenixborn-card';
+          card.className = 'phoenixborn-card' + (i === 0 ? ' p1-card' : ' p2-card');
           card.innerHTML = '<div class="player">' + escapeHtml(names[i]) + '</div><div class="name">' + escapeHtml(pbs[names[i]] || names[i]) + '</div>';
           phoenixbornSection.appendChild(card);
         }
@@ -921,11 +959,12 @@
         if (!series) return;
 
         var showHealth = layerHealth.checked;
+        var showTotalAdv = layerTotalAdv.checked;
         var showDice = layerDice.checked;
-        var showAttacks = layerAttacks.checked;
         var showBf = layerBattlefield.checked;
+        var showAttacks = layerAttacks.checked;
 
-        if (showDice || showBf) {
+        if (showDice || showBf || showTotalAdv) {
           diceNaNote.textContent = 'Dice spending estimated from chat log (10 dice per player per round).';
           diceNaNote.classList.remove('hidden');
         } else {
@@ -939,16 +978,30 @@
 
         if (chart) chart.destroy();
 
-        var xGrid = { color: 'rgba(59, 66, 97, 0.5)' };
-        var xTicks = { color: '#565f89', maxRotation: 45 };
-        var yGrid = { color: 'rgba(59, 66, 97, 0.5)' };
-        var yTicks = { color: '#565f89' };
+        var xGrid = { color: CHART_GRID };
+        var xTicks = { color: CHART_TICKS, maxRotation: 45 };
+        var yGrid = { color: CHART_GRID };
+        var yTicks = { color: CHART_TICKS };
 
         // Build datasets and scales dynamically based on checkboxes
         var datasets = [];
         var scales = { x: { grid: xGrid, ticks: xTicks } };
         var needsLeftAxis = showHealth || showBf || showAttacks;
-        var needsRightAxis = showDice || showBf;
+        var needsRightAxis = showDice || showBf || showTotalAdv;
+
+        // Right axis: symmetric around 0 when total/dice/bf advantage shown
+        var rightMax = 5;
+        if (showDice) rightMax = Math.max(rightMax, 10);
+        if (showBf) {
+          for (var rbi = 0; rbi < series.bfValueAdv.length; rbi++) {
+            rightMax = Math.max(rightMax, Math.abs(series.bfValueAdv[rbi]));
+          }
+        }
+        if (showTotalAdv && series.totalAdvantage) {
+          for (var tai = 0; tai < series.totalAdvantage.length; tai++) {
+            rightMax = Math.max(rightMax, Math.abs(series.totalAdvantage[tai]));
+          }
+        }
 
         // Determine left axis label
         var leftLabels = [];
@@ -958,19 +1011,21 @@
 
         // Determine right axis label
         var rightLabels = [];
+        if (showTotalAdv) rightLabels.push('Total resource advantage');
         if (showDice) rightLabels.push('Dice advantage');
         if (showBf) rightLabels.push('Battlefield advantage');
 
         if (needsLeftAxis) {
           scales.yLeft = {
             type: 'linear', position: 'left', grid: yGrid, ticks: yTicks, min: 0,
-            title: { display: true, text: leftLabels.join(' / '), color: '#565f89' }
+            title: { display: true, text: leftLabels.join(' / '), color: CHART_TICKS }
           };
         }
         if (needsRightAxis) {
           scales.yRight = {
             type: 'linear', position: 'right', grid: { drawOnChartArea: false }, ticks: yTicks,
-            title: { display: true, text: rightLabels.join(' / '), color: '#565f89' }
+            min: -rightMax, max: rightMax,
+            title: { display: true, text: rightLabels.join(' / '), color: CHART_TICKS }
           };
         }
 
@@ -978,12 +1033,12 @@
         if (showHealth) {
           datasets.push({
             label: pb1 + ' health', type: 'line', data: series.health1,
-            borderColor: '#7aa2f7', backgroundColor: 'rgba(122, 162, 247, 0.1)',
+            borderColor: CHART_P1, backgroundColor: CHART_P1_FILL,
             fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1
           });
           datasets.push({
             label: pb2 + ' health', type: 'line', data: series.health2,
-            borderColor: '#bb9af7', backgroundColor: 'rgba(187, 154, 247, 0.1)',
+            borderColor: CHART_P2, backgroundColor: CHART_P2_FILL,
             fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1
           });
         }
@@ -992,12 +1047,12 @@
         if (showBf) {
           datasets.push({
             label: pb1 + ' battlefield', type: 'line', data: series.bfValue1,
-            borderColor: '#7aa2f7', backgroundColor: 'rgba(122, 162, 247, 0.08)',
+            borderColor: CHART_P1, backgroundColor: CHART_P1_FILL,
             borderDash: [6, 3], fill: false, tension: 0.2, pointRadius: 2, yAxisID: 'yLeft', order: 1
           });
           datasets.push({
             label: pb2 + ' battlefield', type: 'line', data: series.bfValue2,
-            borderColor: '#bb9af7', backgroundColor: 'rgba(187, 154, 247, 0.08)',
+            borderColor: CHART_P2, backgroundColor: CHART_P2_FILL,
             borderDash: [6, 3], fill: false, tension: 0.2, pointRadius: 2, yAxisID: 'yLeft', order: 1
           });
           datasets.push({
@@ -1005,13 +1060,38 @@
             data: series.bfValueAdv,
             backgroundColor: function (ctx) {
               var v = ctx.raw;
-              return v > 0 ? 'rgba(255, 158, 100, 0.35)' : v < 0 ? 'rgba(125, 207, 255, 0.35)' : 'rgba(91, 96, 120, 0.2)';
+              return v > 0 ? 'rgba(13, 148, 136, 0.35)' : v < 0 ? 'rgba(180, 83, 9, 0.35)' : 'rgba(107, 114, 128, 0.2)';
             },
             borderColor: function (ctx) {
               var v = ctx.raw;
-              return v > 0 ? 'rgba(255, 158, 100, 0.6)' : v < 0 ? 'rgba(125, 207, 255, 0.6)' : 'rgba(91, 96, 120, 0.4)';
+              return v > 0 ? 'rgba(13, 148, 136, 0.6)' : v < 0 ? 'rgba(180, 83, 9, 0.6)' : 'rgba(107, 114, 128, 0.4)';
             },
             borderWidth: 1, yAxisID: 'yRight', order: 3
+          });
+        }
+
+        // Total resource advantage layer (floating bars: P2 [adv,0], P1 [0,adv] on right axis)
+        if (showTotalAdv && series.totalAdvantage) {
+          var totalAdv = series.totalAdvantage;
+          var p2Bars = totalAdv.map(function (v) { return v < 0 ? [v, 0] : [0, 0]; });
+          var p1Bars = totalAdv.map(function (v) { return v > 0 ? [0, v] : [0, 0]; });
+          datasets.push({
+            label: 'Total resource (' + pb2 + ')',
+            data: p2Bars,
+            backgroundColor: CHART_P2_ADV,
+            borderColor: CHART_P2,
+            borderWidth: 1,
+            yAxisID: 'yRight',
+            order: 4
+          });
+          datasets.push({
+            label: 'Total resource (' + pb1 + ')',
+            data: p1Bars,
+            backgroundColor: CHART_P1_ADV,
+            borderColor: CHART_P1,
+            borderWidth: 1,
+            yAxisID: 'yRight',
+            order: 3
           });
         }
 
@@ -1022,11 +1102,11 @@
             data: series.diceAdvantage,
             backgroundColor: function (ctx) {
               var v = ctx.raw;
-              return v > 0 ? 'rgba(158, 206, 106, 0.35)' : v < 0 ? 'rgba(247, 118, 142, 0.35)' : 'rgba(91, 96, 120, 0.2)';
+              return v > 0 ? 'rgba(13, 148, 136, 0.35)' : v < 0 ? 'rgba(180, 83, 9, 0.35)' : 'rgba(107, 114, 128, 0.2)';
             },
             borderColor: function (ctx) {
               var v = ctx.raw;
-              return v > 0 ? 'rgba(158, 206, 106, 0.6)' : v < 0 ? 'rgba(247, 118, 142, 0.6)' : 'rgba(91, 96, 120, 0.4)';
+              return v > 0 ? 'rgba(13, 148, 136, 0.6)' : v < 0 ? 'rgba(180, 83, 9, 0.6)' : 'rgba(107, 114, 128, 0.4)';
             },
             borderWidth: 1, yAxisID: 'yRight', order: 2
           });
@@ -1040,12 +1120,12 @@
             backgroundColor: function (ctx) {
               var who = series.attackPlayer[ctx.dataIndex];
               if (!who) return 'transparent';
-              return who === pb1 ? 'rgba(122, 162, 247, 0.9)' : 'rgba(187, 154, 247, 0.9)';
+              return who === pb1 ? CHART_P1_ADV : CHART_P2_ADV;
             },
             borderColor: function (ctx) {
               var who = series.attackPlayer[ctx.dataIndex];
               if (!who) return 'transparent';
-              return who === pb1 ? '#7aa2f7' : '#bb9af7';
+              return who === pb1 ? CHART_P1 : CHART_P2;
             },
             borderWidth: 2, yAxisID: 'yLeft', order: 0, barPercentage: 0.3
           });
@@ -1061,6 +1141,13 @@
         // Build tooltip callbacks
         var tooltipAfterLabel = function (ctx) {
           var ds = ctx.dataset;
+          if (ds.label && ds.label.indexOf('Total resource') === 0) {
+            var v = series.totalAdvantage && series.totalAdvantage[ctx.dataIndex];
+            if (v === undefined) return '';
+            if (v > 0) return pb1 + ' ahead by ' + v + ' (dice + battlefield)';
+            if (v < 0) return pb2 + ' ahead by ' + (-v) + ' (dice + battlefield)';
+            return 'Even';
+          }
           if (ds.label && ds.label.indexOf('Dice advantage') === 0) {
             var v = ctx.raw;
             if (v > 0) return pb1 + ' has ' + v + ' more unspent dice';
@@ -1129,7 +1216,7 @@
               if (rounds[bi].round % 2 === 0) {
                 var x1 = xScale.getPixelForValue(rounds[bi].start) - (xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) / 2;
                 var x2 = xScale.getPixelForValue(rounds[bi].end) + (xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) / 2;
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+                ctx.fillStyle = 'rgba(55, 65, 81, 0.08)';
                 ctx.fillRect(x1, yTop, x2 - x1, yBottom - yTop);
               }
             }
@@ -1137,89 +1224,70 @@
           }
         };
 
-        // Draw situation strip on canvas
-        function drawSituationStrip(canvasEl) {
-          var sit = series.situation;
-          var n = sit.length;
-          if (n === 0) return;
-          var rect = canvasEl.getBoundingClientRect();
-          var dpr = window.devicePixelRatio || 1;
-          canvasEl.width = rect.width * dpr;
-          canvasEl.height = rect.height * dpr;
-          var ctx = canvasEl.getContext('2d');
-          ctx.scale(dpr, dpr);
-          var w = rect.width;
-          var h = rect.height;
-          var segW = w / n;
-          // Draw colored segments
-          for (var si = 0; si < n; si++) {
-            ctx.fillStyle = series.stateColors[sit[si].key] || '#414868';
-            ctx.fillRect(si * segW, 0, segW + 0.5, h);
-          }
-          // Draw PB names on segments
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = 'rgba(255,255,255,0.85)';
-          var fontSize = Math.max(8, Math.min(11, h * 0.52));
-          ctx.font = '600 ' + fontSize + 'px "Segoe UI", system-ui, sans-serif';
-          // Helper to get display label for a situation
-          function sitLabel(s) {
-            if (s.player) return s.player;
-            if (s.key === 'contested' && s.desc) {
-              var parts = s.desc.split(';');
-              if (parts.length === 2) {
-                return parts[0].trim().split(/\s/)[0] + ' vs ' + parts[1].trim().split(/\s/)[0];
-              }
-            }
-            return '';
-          }
-          // Merge consecutive segments with the same label into runs
-          var runs = [];
-          var ri = 0;
-          while (ri < n) {
-            var label = sitLabel(sit[ri]);
-            var runStart = ri;
-            ri++;
-            while (ri < n && sit[ri].key === sit[runStart].key && sitLabel(sit[ri]) === label) {
-              ri++;
-            }
-            if (label) {
-              runs.push({ start: runStart, end: ri, label: label });
-            }
-          }
-          for (var r = 0; r < runs.length; r++) {
-            var run = runs[r];
-            var x0 = run.start * segW;
-            var runW = (run.end - run.start) * segW;
-            var textW = ctx.measureText(run.label).width;
-            var displayLabel = run.label;
-            // If full name doesn't fit, try progressively shorter forms
-            if (textW > runW - 4) {
-              if (run.label.indexOf(' vs ') > -1) {
-                // Contested: "Lulu vs Fiona" → "L vs F"
-                var vsParts = run.label.split(' vs ');
-                displayLabel = vsParts[0][0] + ' vs ' + vsParts[1][0];
-              } else {
-                // Single player: try first name only
-                displayLabel = run.label.split(/\s/)[0];
-              }
-              textW = ctx.measureText(displayLabel).width;
-            }
-            // If still doesn't fit, try shortest abbreviation
-            if (textW > runW - 4) {
-              if (run.label.indexOf(' vs ') > -1) {
-                displayLabel = '⟷'; // contested marker
-              } else {
-                displayLabel = run.label.substring(0, 3);
-              }
-              textW = ctx.measureText(displayLabel).width;
-            }
-            // Only draw if it fits with at least 2px padding
-            if (textW <= runW - 2) {
-              ctx.fillStyle = 'rgba(255,255,255,0.9)';
-              ctx.fillText(displayLabel, x0 + (runW - textW) / 2, h / 2);
-            }
-          }
+        // Plugin: semi-transparent state ribbon over the top of the chart
+        var ribbonHeight = 26;
+        var ribbonAlpha = 0.72;
+        function hexToRgba(hex, a) {
+          var m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+          if (!m) return hex;
+          return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
         }
+        var ribbonPlugin = {
+          id: 'stateRibbon',
+          afterDraw: function (chart) {
+            var sit = series.situation;
+            var n = sit.length;
+            if (n === 0) return;
+            var ctx = chart.ctx;
+            var xScale = chart.scales.x;
+            var left = chart.chartArea.left;
+            var right = chart.chartArea.right;
+            var bottom = chart.chartArea.bottom;
+            var ribbonBottom = bottom;
+            var ribbonTop = Math.max(bottom - ribbonHeight, chart.chartArea.top + 4);
+
+            ctx.save();
+            for (var si = 0; si < n; si++) {
+              var x0 = si === 0 ? left : xScale.getPixelForValue(si - 0.5);
+              var x1 = si === n - 1 ? right : xScale.getPixelForValue(si + 0.5);
+              var segW = x1 - x0;
+              var color = series.stateColors[sit[si].key] || '#6b7280';
+              ctx.fillStyle = hexToRgba(color, ribbonAlpha);
+              ctx.fillRect(x0, ribbonTop, segW + 0.5, ribbonBottom - ribbonTop);
+            }
+            ctx.restore();
+
+            ctx.save();
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
+            var runs = [];
+            var ri = 0;
+            while (ri < n) {
+              var runStart = ri;
+              var runDesc = sit[ri].desc;
+              ri++;
+              while (ri < n && sit[ri].desc === runDesc) ri++;
+              runs.push({ start: runStart, end: ri, desc: runDesc });
+            }
+            for (var r = 0; r < runs.length; r++) {
+              var run = runs[r];
+              var x0 = run.start === 0 ? left : xScale.getPixelForValue(run.start - 0.5);
+              var x1 = run.end === n ? right : xScale.getPixelForValue(run.end - 0.5);
+              var runW = x1 - x0;
+              var displayLabel = run.desc;
+              if (displayLabel.length > 2) {
+                var short = displayLabel.indexOf(':') > -1 ? displayLabel.split(':')[0].trim() : displayLabel;
+                if (ctx.measureText(displayLabel).width > runW - 6) displayLabel = short;
+                if (ctx.measureText(displayLabel).width > runW - 6) displayLabel = short.substring(0, 12);
+              }
+              if (ctx.measureText(displayLabel).width <= runW - 4) {
+                ctx.fillText(displayLabel, x0 + (runW - ctx.measureText(displayLabel).width) / 2, (ribbonTop + ribbonBottom) / 2);
+              }
+            }
+            ctx.restore();
+          }
+        };
 
         // Build custom HTML legend
         var legendBox = document.getElementById('chartLegend');
@@ -1230,22 +1298,26 @@
           return '<span class="swatch" style="background:' + color + '"></span>';
         }
         if (showHealth) {
-          legendHtml += '<span class="legend-item">' + swatch('#7aa2f7', 'line') + pb1 + ' health</span>';
-          legendHtml += '<span class="legend-item">' + swatch('#bb9af7', 'line') + pb2 + ' health</span>';
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P1, 'line') + pb1 + ' health</span>';
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P2, 'line') + pb2 + ' health</span>';
+        }
+        if (showTotalAdv) {
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P1) + pb1 + ' total resource adv</span>';
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P2) + pb2 + ' total resource adv</span>';
         }
         if (showBf) {
-          legendHtml += '<span class="legend-item">' + swatch('#7aa2f7', 'dashed') + pb1 + ' battlefield</span>';
-          legendHtml += '<span class="legend-item">' + swatch('#bb9af7', 'dashed') + pb2 + ' battlefield</span>';
-          legendHtml += '<span class="legend-item">' + swatch('rgba(255, 158, 100, 0.6)') + pb1 + ' BF advantage</span>';
-          legendHtml += '<span class="legend-item">' + swatch('rgba(125, 207, 255, 0.6)') + pb2 + ' BF advantage</span>';
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P1, 'dashed') + pb1 + ' battlefield</span>';
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P2, 'dashed') + pb2 + ' battlefield</span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(13, 148, 136, 0.6)') + pb1 + ' BF advantage</span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(180, 83, 9, 0.6)') + pb2 + ' BF advantage</span>';
         }
         if (showDice) {
-          legendHtml += '<span class="legend-item">' + swatch('rgba(158, 206, 106, 0.7)') + pb1 + ' dice advantage</span>';
-          legendHtml += '<span class="legend-item">' + swatch('rgba(247, 118, 142, 0.7)') + pb2 + ' dice advantage</span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(13, 148, 136, 0.7)') + pb1 + ' dice advantage</span>';
+          legendHtml += '<span class="legend-item">' + swatch('rgba(180, 83, 9, 0.7)') + pb2 + ' dice advantage</span>';
         }
         if (showAttacks) {
-          legendHtml += '<span class="legend-item">' + swatch('#7aa2f7') + pb1 + ' attacks</span>';
-          legendHtml += '<span class="legend-item">' + swatch('#bb9af7') + pb2 + ' attacks</span>';
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P1) + pb1 + ' attacks</span>';
+          legendHtml += '<span class="legend-item">' + swatch(CHART_P2) + pb2 + ' attacks</span>';
         }
         // Strategy strip legend
         legendHtml += '<span class="legend-sep"></span>';
@@ -1272,11 +1344,8 @@
             },
             scales: scales
           },
-          plugins: [roundBandsPlugin]
+          plugins: [roundBandsPlugin, ribbonPlugin]
         });
-
-        // Draw situation strip
-        drawSituationStrip(document.getElementById('stripCanvas'));
       }
 
       function renderGameResult() {
@@ -1419,14 +1488,31 @@
           else if (ba < 0) parts.push(pb2 + ' leads battlefield value by ' + (-ba));
           else parts.push('Battlefield value tied');
 
-          // Situation
+          // Situation (highlight with state color like the strip)
           var sit = series.situation[i];
           var sitText = sit.desc;
+          var stateColor = series.stateColors[sit.key] || '#6b7280';
 
-          html += '<div class="narr-turn" role="listitem">';
-          html += '<strong>' + escapeHtml(label) + ':</strong> ';
+          var prevAdv = i > 0 ? (series.totalAdvantage[i - 1] || 0) : (series.totalAdvantage[i] || 0);
+          var currAdv = series.totalAdvantage[i] || 0;
+          var swing = Math.abs(currAdv - prevAdv);
+          var isPivot = swing >= 2;
+
+          var labelHtml = escapeHtml(label);
+          if (isPivot) labelHtml = '<span class="narr-pivot-label">' + labelHtml + '</span>';
+
+          html += '<div class="narr-turn' + (isPivot ? ' narr-pivot' : '') + '" role="listitem">';
+          html += '<strong>' + labelHtml + ':</strong> ';
           html += escapeHtml(parts.join('. ')) + '. ';
-          html += '<span class="narr-state">' + escapeHtml(sitText) + '</span>';
+          html += '<span class="narr-state" style="background:' + stateColor + ';color:rgba(255,255,255,0.95)">' + escapeHtml(sitText) + '</span>';
+          if (isPivot) {
+            var swingDir = currAdv > prevAdv ? ' toward ' + pb1 : ' toward ' + pb2;
+            var swingAmt = currAdv - prevAdv;
+            html += '<div class="narr-swing-note">Resource advantage swung by ' + (swingAmt > 0 ? '+' : '') + swingAmt + swingDir + '</div>';
+          }
+          if (isPivot && series.chatLines && series.chatLines[i] && series.chatLines[i].length > 0) {
+            html += '<div class="narr-chat-swing">Chat: ' + series.chatLines[i].map(function (l) { return escapeHtml(l); }).join('; ') + '</div>';
+          }
           html += '</div>';
         }
 
@@ -1443,6 +1529,104 @@
 
         content.innerHTML = html;
         section.classList.remove('hidden');
+      }
+
+      function copyForDiscord() {
+        var series = buildSeries();
+        if (!series || !replayData) return;
+
+        var p1 = replayData.playerNames[0];
+        var p2 = replayData.playerNames[1];
+        var pb1 = replayData.phoenixborn[p1];
+        var pb2 = replayData.phoenixborn[p2];
+        var s1 = replayData.stats[p1] || {};
+        var s2 = replayData.stats[p2] || {};
+
+        var finalH1 = series.health1[series.health1.length - 1] || 0;
+        var finalH2 = series.health2[series.health2.length - 1] || 0;
+
+        var turnsInControl1 = 0, turnsInControl2 = 0;
+        for (var t = 0; t < series.situation.length; t++) {
+          var sit = series.situation[t];
+          if (sit.player === pb1) turnsInControl1++;
+          else if (sit.player === pb2) turnsInControl2++;
+        }
+
+        // Find hypest turn: biggest |totalAdvantage swing|
+        var hypestIdx = -1;
+        var hypestSwing = 0;
+        for (var i = 1; i < series.labels.length; i++) {
+          var lbl = series.labels[i];
+          if (lbl.indexOf('start') !== -1 || lbl === 'End') continue;
+          var prevAdv = series.totalAdvantage[i - 1] || 0;
+          var currAdv = series.totalAdvantage[i] || 0;
+          var swing = Math.abs(currAdv - prevAdv);
+          if (swing > hypestSwing) {
+            hypestSwing = swing;
+            hypestIdx = i;
+          }
+        }
+
+        // Build Discord block
+        var out = '';
+
+        if (replayData.gameResult) {
+          var r = replayData.gameResult;
+          var winner = r.winnerPb || r.winner;
+          out += '**' + winner + '** wins Round ' + r.round + ', Turn ' + r.turn;
+          if (r.method === 'concession') out += ' by concession';
+          out += '.\n\n';
+        }
+
+        function pad(s, w) {
+          var str = String(s);
+          while (str.length < w) str += ' ';
+          return str;
+        }
+        var colL = 20;
+        var colN = 6;
+        out += '```\n';
+        out += pad('', colL) + pad(pb1, colN) + pad(pb2, colN) + '\n';
+        out += pad('Final health', colL) + pad(finalH1, colN) + pad(finalH2, colN) + '\n';
+        out += pad('Damage dealt', colL) + pad(s1.totalDamageDealt || 0, colN) + pad(s2.totalDamageDealt || 0, colN) + '\n';
+        out += pad('Attacks', colL) + pad(s1.totalAttacks || 0, colN) + pad(s2.totalAttacks || 0, colN) + '\n';
+        out += pad('Dice spent', colL) + pad(s1.totalDiceSpent || 0, colN) + pad(s2.totalDiceSpent || 0, colN) + '\n';
+        out += pad('Cards played', colL) + pad(s1.cardsPlayed || 0, colN) + pad(s2.cardsPlayed || 0, colN) + '\n';
+        out += pad('Turns in control', colL) + pad(turnsInControl1, colN) + pad(turnsInControl2, colN) + '\n';
+        out += '```\n\n';
+
+        if (hypestIdx >= 0 && hypestSwing > 0) {
+          var hypLabel = series.labels[hypestIdx];
+          var rMatch = hypLabel.match(/R(\d+)\.(\d+)/);
+          var hypRound = rMatch ? rMatch[1] : '?';
+          var hypTurn = rMatch ? rMatch[2] : '?';
+          var prevAdv = series.totalAdvantage[hypestIdx - 1] || 0;
+          var currAdv = series.totalAdvantage[hypestIdx] || 0;
+          var swingAmt = currAdv - prevAdv;
+          var toward = swingAmt > 0 ? pb1 : pb2;
+          var sit = series.situation[hypestIdx];
+          var sitText = sit ? sit.desc : '';
+
+          out += '> **HYPEST TURN — Round ' + hypRound + ', Turn ' + hypTurn + ':** Resource advantage swung by ';
+          out += (swingAmt > 0 ? '+' : '') + swingAmt + ' toward ' + toward + '. ' + sitText;
+
+          var chat = series.chatLines && series.chatLines[hypestIdx];
+          if (chat && chat.length > 0) {
+            var chatStr = chat.join('; ');
+            if (chatStr.length > 180) chatStr = chatStr.substring(0, 177) + '...';
+            out += '\n> Chat: ' + chatStr;
+          }
+          out += '\n';
+        }
+
+        navigator.clipboard.writeText(out).then(function () {
+          var btn = document.getElementById('copyDiscordBtn');
+          var orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(function () { btn.textContent = orig; }, 1500);
+        }).catch(function () {
+          showError('Could not copy to clipboard.');
+        });
       }
 
       function exportReport() {
@@ -1464,29 +1648,30 @@
           resultHtml += '</span></div>';
         }
 
-        // PB cards HTML
+        // PB cards HTML (p1-card / p2-card for chart-matching colors)
         var pbHtml = '<div class="phoenixborn-cards">';
         for (var i = 0; i < replayData.playerNames.length; i++) {
           var pn = replayData.playerNames[i];
-          pbHtml += '<div class="phoenixborn-card"><div class="player">' + escapeHtml(pn) + '</div><div class="name">' + escapeHtml(replayData.phoenixborn[pn] || pn) + '</div></div>';
+          var cardClass = 'phoenixborn-card' + (i === 0 ? ' p1-card' : ' p2-card');
+          pbHtml += '<div class="' + cardClass + '"><div class="player">' + escapeHtml(pn) + '</div><div class="name">' + escapeHtml(replayData.phoenixborn[pn] || pn) + '</div></div>';
         }
         pbHtml += '</div>';
 
-        // Strategy strip as colored HTML divs
+        // Strategy strip as colored HTML divs (merge consecutive same-desc segments like overlay)
         var stripHtml = '<div class="strip-row"><span class="strip-label">Game state</span><div class="strip-bar">';
         var n = series.situation.length;
-        for (var si = 0; si < n; si++) {
-          var sit = series.situation[si];
-          var bgColor = series.stateColors[sit.key] || '#414868';
-          var segLabel = '';
-          if (sit.player) {
-            segLabel = sit.player.split(/\s/)[0]; // first name
-          } else if (sit.key === 'contested' && sit.desc) {
-            var parts = sit.desc.split(';');
-            if (parts.length === 2) segLabel = parts[0].trim().split(/\s/)[0][0] + ' vs ' + parts[1].trim().split(/\s/)[0][0];
-          }
-          stripHtml += '<div class="strip-seg" style="background:' + bgColor + ';width:' + (100 / n) + '%"' + (sit.desc ? ' title="' + escapeHtml(sit.desc) + '"' : '') + '>';
-          if (segLabel) stripHtml += '<span class="strip-seg-text">' + escapeHtml(segLabel) + '</span>';
+        var ri = 0;
+        while (ri < n) {
+          var runStart = ri;
+          var runDesc = series.situation[ri].desc;
+          var runKey = series.situation[ri].key;
+          ri++;
+          while (ri < n && series.situation[ri].desc === runDesc) ri++;
+          var runCount = ri - runStart;
+          var pct = (100 * runCount / n).toFixed(2);
+          var bgColor = series.stateColors[runKey] || '#6b7280';
+          stripHtml += '<div class="strip-seg" style="background:' + bgColor + ';width:' + pct + '%"' + (runDesc ? ' title="' + escapeHtml(runDesc) + '"' : '') + '>';
+          if (runDesc) stripHtml += '<span class="strip-seg-text">' + escapeHtml(runDesc) + '</span>';
           stripHtml += '</div>';
         }
         stripHtml += '</div></div>';
@@ -1517,6 +1702,7 @@
           bfValue1: series.bfValue1,
           bfValue2: series.bfValue2,
           bfValueAdv: series.bfValueAdv,
+          totalAdvantage: series.totalAdvantage,
           situation: series.situation,
           stateColors: series.stateColors,
           stateLabels: series.stateLabels
@@ -1527,18 +1713,22 @@
         var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>' + title + '</title>\n'
           + '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>\n'
           + '<style>\n'
-          + ':root{--bg:#1a1b26;--surface:#24283b;--text:#c0caf5;--muted:#565f89;--accent1:#7aa2f7;--accent2:#bb9af7;--green:#9ece6a;--red:#f7768e;--border:#3b4261}\n'
+          + ':root{--bg:#f5f3ef;--surface:#ebe8e2;--text:#2c2c2c;--muted:#6b7280;--charcoal:#364050;--accent:#b91c1c;--gold:#c9a227;--p1:#0d9488;--p2:#b45309;--red:#b91c1c;--border:#d1d5db}\n'
           + '*{box-sizing:border-box}\n'
           + 'body{font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:1.5rem;min-height:100vh}\n'
-          + 'h1{font-size:1.5rem;font-weight:600;margin:0 0 0.5rem;color:var(--accent1)}\n'
+          + 'h1{font-size:1.5rem;font-weight:600;margin:0 0 0.5rem;color:var(--charcoal)}\n'
           + 'h2{font-size:1.15rem;color:var(--text);margin:1.5rem 0 0.75rem}\n'
           + 'h3{font-size:1rem;color:var(--muted);margin:1rem 0 0.5rem}\n'
           + '.phoenixborn-cards{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}\n'
-          + '.phoenixborn-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem;min-width:180px}\n'
+          + '.phoenixborn-card{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:8px;padding:0.75rem 1rem;min-width:180px}\n'
+          + '.phoenixborn-card.p1-card{border-left-color:var(--p1)}\n'
+          + '.phoenixborn-card.p2-card{border-left-color:var(--p2)}\n'
           + '.phoenixborn-card .player{color:var(--muted);font-size:0.85rem}\n'
-          + '.phoenixborn-card .name{font-weight:600;color:var(--accent2)}\n'
-          + '.game-result{background:var(--surface);border:1px solid var(--accent2);border-radius:8px;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.95rem}\n'
-          + '.game-result .winner-name{font-weight:600;color:var(--accent2)}\n'
+          + '.phoenixborn-card .name{font-weight:600;color:var(--charcoal)}\n'
+          + '.phoenixborn-card.p1-card .name{color:var(--p1)}\n'
+          + '.phoenixborn-card.p2-card .name{color:var(--p2)}\n'
+          + '.game-result{background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.95rem}\n'
+          + '.game-result .winner-name{font-weight:600;color:var(--gold)}\n'
           + '.game-result .result-detail{color:var(--muted)}\n'
           + '.chart-box{background:var(--surface);border-radius:12px;padding:1rem;margin-bottom:0.75rem;position:relative;height:260px}\n'
           + '.chart-box canvas{max-height:240px}\n'
@@ -1549,9 +1739,9 @@
           + '.chart-legend .swatch-line-dashed{width:20px;height:0;border-top:3px dashed;border-radius:0}\n'
           + '.strip-row{display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 1rem}\n'
           + '.strip-label{color:var(--muted);font-size:0.72rem;min-width:80px;text-align:right}\n'
-          + '.strip-bar{display:flex;flex:1;height:22px;border-radius:3px;overflow:hidden}\n'
+          + '.strip-bar{display:flex;flex:1;height:34px;border-radius:3px;overflow:hidden}\n'
           + '.strip-seg{display:flex;align-items:center;justify-content:center;overflow:hidden}\n'
-          + '.strip-seg-text{color:rgba(255,255,255,0.9);font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}\n'
+          + '.strip-seg-text{color:rgba(255,255,255,0.9);font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}\n'
           + '.state-legend{display:flex;flex-wrap:wrap;gap:0.4rem 1rem;font-size:0.8rem;color:var(--muted);margin-bottom:1rem}\n'
           + '.state-legend .legend-item{display:flex;align-items:center;gap:0.3rem}\n'
           + '.state-legend .swatch{display:inline-block;width:12px;height:12px;border-radius:2px;flex-shrink:0}\n'
@@ -1561,8 +1751,11 @@
           + '.narr-round{margin-bottom:0.75rem}\n'
           + '.narr-round-header{font-weight:600;color:var(--text);margin-bottom:0.25rem}\n'
           + '.narr-turn{margin-left:1rem;margin-bottom:0.3rem}\n'
+          + '.narr-pivot-label{color:var(--gold)}\n'
+          + '.narr-swing-note{font-size:0.88rem;color:var(--gold);font-weight:600;margin-top:0.2rem}\n'
           + '.narr-state{color:var(--muted);font-style:italic}\n'
-          + '.narr-result{font-weight:600;color:var(--accent2);margin-top:0.5rem}\n'
+          + '.narr-chat-swing{font-size:0.82rem;color:var(--muted);font-style:italic;margin-top:0.25rem;margin-left:0.5rem}\n'
+          + '.narr-result{font-weight:600;color:var(--accent);margin-top:0.5rem}\n'
           + '.stats-box{background:var(--surface);border-radius:12px;padding:1.25rem 1.5rem;margin-top:1rem}\n'
           + '.stats-box h2{margin-top:0}\n'
           + '.stats-table{width:100%;border-collapse:collapse;font-size:0.85rem}\n'
@@ -1570,13 +1763,18 @@
           + '.stats-table td{padding:0.35rem 0.75rem;border-bottom:1px solid rgba(59,66,97,0.3)}\n'
           + '.stats-table td.num{text-align:right;font-variant-numeric:tabular-nums}\n'
           + '.stats-table .stat-label{color:var(--muted)}\n'
-          + '.stats-table .p1-col{color:#7aa2f7}\n'
-          + '.stats-table .p2-col{color:#bb9af7}\n'
+          + '.stats-table .p1-col{color:var(--p1)}\n'
+          + '.stats-table .p2-col{color:var(--p2)}\n'
           + '.footer{color:var(--muted);font-size:0.75rem;margin-top:1.5rem;text-align:center}\n'
+          + '.advantage-desc{font-size:0.85rem;color:var(--muted);margin:0 0 0.5rem}\n'
+          + '@media print{@page{size:landscape;margin:0.5in}body{zoom:0.48;padding:0.5rem;min-height:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact}.chart-box{height:140px!important;page-break-inside:avoid}.chart-box canvas{max-height:120px!important}.strip-bar,.phoenixborn-cards,.stats-box,.narrative,.game-result{page-break-inside:avoid}h2,h3{margin-top:0.4rem;page-break-after:avoid}}\n'
           + '</style>\n</head>\n<body>\n'
           + '<h1>' + title + '</h1>\n'
           + pbHtml + '\n'
           + resultHtml + '\n'
+          + '<h2>Total resource advantage</h2>\n'
+          + '<p class="advantage-desc">Unspent dice + battlefield value. Positive = ' + escapeHtml(pb1) + ' ahead; negative = ' + escapeHtml(pb2) + ' ahead.</p>\n'
+          + '<div class="chart-box" style="height:260px"><canvas id="chartAdvantage"></canvas></div>\n'
           + '<h2>Health</h2>\n'
           + '<div class="chart-legend" id="legendHealth"></div>\n'
           + '<div class="chart-box"><canvas id="chartHealth"></canvas></div>\n'
@@ -1594,26 +1792,30 @@
           + legendHtml + '\n'
           + '<div class="stats-box"><h2>Game Summary</h2>' + statsHtml + '</div>\n'
           + '<div class="narrative"><h2>Game Narrative</h2><div class="narr-content">' + narrativeHtml + '</div></div>\n'
-          + '<div class="footer">Generated by Ashteki Replay Visualizer</div>\n'
+          + '<div class="footer">Generated by Vermillion: Ashes Game Report</div>\n'
           + '<script>\n'
           + 'var S = ' + seriesJson + ';\n'
           + 'var pb1 = ' + JSON.stringify(pb1) + ';\n'
           + 'var pb2 = ' + JSON.stringify(pb2) + ';\n'
-          + 'var xGrid={color:"rgba(59,66,97,0.5)"}, xTicks={color:"#565f89",maxRotation:45}, yGrid={color:"rgba(59,66,97,0.5)"}, yTicks={color:"#565f89"};\n'
+          + 'var xGrid={color:"rgba(55,65,81,0.25)"}, xTicks={color:"#6b7280",maxRotation:45}, yGrid={color:"rgba(55,65,81,0.25)"}, yTicks={color:"#6b7280"};\n'
           + 'function swatch(c,t){if(t==="line")return\'<span class="swatch swatch-line" style="background:\'+c+\'"></span>\';if(t==="dashed")return\'<span class="swatch swatch-line-dashed" style="border-color:\'+c+\'"></span>\';return\'<span class="swatch" style="background:\'+c+\'"></span>\';}\n'
-          + 'var roundBandsPlugin={id:"roundBands",beforeDraw:function(chart){var ctx=chart.ctx,xS=chart.scales.x,yT=chart.chartArea.top,yB=chart.chartArea.bottom,l=chart.data.labels;if(!l||!l.length)return;var rounds=[],cr=null,si=0;for(var i=0;i<l.length;i++){var m=l[i].match(/^R(\\d+)/);var rn=m?m[1]:cr;if(rn!==cr){if(cr!==null)rounds.push({round:parseInt(cr,10),start:si,end:i-1});cr=rn;si=i;}}if(cr!==null)rounds.push({round:parseInt(cr,10),start:si,end:l.length-1});ctx.save();for(var b=0;b<rounds.length;b++){if(rounds[b].round%2===0){var x1=xS.getPixelForValue(rounds[b].start)-(xS.getPixelForValue(1)-xS.getPixelForValue(0))/2;var x2=xS.getPixelForValue(rounds[b].end)+(xS.getPixelForValue(1)-xS.getPixelForValue(0))/2;ctx.fillStyle="rgba(255,255,255,0.03)";ctx.fillRect(x1,yT,x2-x1,yB-yT);}}ctx.restore();}};\n'
+          + 'var roundBandsPlugin={id:"roundBands",beforeDraw:function(chart){var ctx=chart.ctx,xS=chart.scales.x,yT=chart.chartArea.top,yB=chart.chartArea.bottom,l=chart.data.labels;if(!l||!l.length)return;var rounds=[],cr=null,si=0;for(var i=0;i<l.length;i++){var m=l[i].match(/^R(\\d+)/);var rn=m?m[1]:cr;if(rn!==cr){if(cr!==null)rounds.push({round:parseInt(cr,10),start:si,end:i-1});cr=rn;si=i;}}if(cr!==null)rounds.push({round:parseInt(cr,10),start:si,end:l.length-1});ctx.save();for(var b=0;b<rounds.length;b++){if(rounds[b].round%2===0){var x1=xS.getPixelForValue(rounds[b].start)-(xS.getPixelForValue(1)-xS.getPixelForValue(0))/2;var x2=xS.getPixelForValue(rounds[b].end)+(xS.getPixelForValue(1)-xS.getPixelForValue(0))/2;ctx.fillStyle="rgba(55,65,81,0.08)";ctx.fillRect(x1,yT,x2-x1,yB-yT);}}ctx.restore();}};\n'
+          + 'var totalAdv=S.totalAdvantage||[]; var p2Bars=totalAdv.map(function(v){return v<0?[v,0]:[0,0]}); var p1Bars=totalAdv.map(function(v){return v>0?[0,v]:[0,0]});\n'
+          + 'var advMax=5; for(var ai=0;ai<totalAdv.length;ai++){var a=Math.abs(totalAdv[ai]);if(a>advMax)advMax=a;}\n'
+          + 'new Chart(document.getElementById("chartAdvantage"),{type:"bar",data:{labels:S.labels,datasets:[{label:pb2+" advantage",data:p2Bars,backgroundColor:"rgba(180,83,9,0.85)",borderColor:"#b45309",borderWidth:1},{label:pb1+" advantage",data:p1Bars,backgroundColor:"rgba(13,148,136,0.85)",borderColor:"#0d9488",borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){var v=totalAdv[ctx.dataIndex];if(v>0)return pb1+" ahead by "+v;if(v<0)return pb2+" ahead by "+(-v);return "Even"}}}},scales:{x:{grid:{color:xGrid.color},ticks:{color:xTicks.color,maxRotation:45}},y:{min:-advMax,max:advMax,grid:{color:yGrid.color},ticks:{color:yTicks.color},title:{display:true,text:"Total advantage (dice + battlefield)",color:yTicks.color}}}},plugins:[roundBandsPlugin]});\n'
           // Health chart
-          + 'document.getElementById("legendHealth").innerHTML=\'<span class="legend-item">\'+swatch("#7aa2f7","line")+pb1+\' health</span><span class="legend-item">\'+swatch("#bb9af7","line")+pb2+\' health</span>\';\n'
-          + 'new Chart(document.getElementById("chartHealth"),{type:"bar",data:{labels:S.labels,datasets:[{label:pb1+" health",type:"line",data:S.health1,borderColor:"#7aa2f7",backgroundColor:"rgba(122,162,247,0.1)",fill:false,tension:0.2,pointRadius:3,yAxisID:"yLeft",order:1},{label:pb2+" health",type:"line",data:S.health2,borderColor:"#bb9af7",backgroundColor:"rgba(187,154,247,0.1)",fill:false,tension:0.2,pointRadius:3,yAxisID:"yLeft",order:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Health",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          + 'document.getElementById("legendHealth").innerHTML=\'<span class="legend-item">\'+swatch("#0d9488","line")+pb1+\' health</span><span class="legend-item">\'+swatch("#b45309","line")+pb2+\' health</span>\';\n'
+          + 'new Chart(document.getElementById("chartHealth"),{type:"bar",data:{labels:S.labels,datasets:[{label:pb1+" health",type:"line",data:S.health1,borderColor:"#0d9488",backgroundColor:"rgba(13,148,136,0.2)",fill:false,tension:0.2,pointRadius:3,yAxisID:"yLeft",order:1},{label:pb2+" health",type:"line",data:S.health2,borderColor:"#b45309",backgroundColor:"rgba(180,83,9,0.2)",fill:false,tension:0.2,pointRadius:3,yAxisID:"yLeft",order:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Health",color:"#6b7280"}}}},plugins:[roundBandsPlugin]});\n'
           // Dice chart
-          + 'document.getElementById("legendDice").innerHTML=\'<span class="legend-item">\'+swatch("rgba(158,206,106,0.7)")+pb1+\' dice advantage</span><span class="legend-item">\'+swatch("rgba(247,118,142,0.7)")+pb2+\' dice advantage</span>\';\n'
-          + 'new Chart(document.getElementById("chartDice"),{type:"bar",data:{labels:S.labels,datasets:[{label:"Dice advantage ("+pb1+" − "+pb2+")",data:S.diceAdvantage,backgroundColor:function(ctx){var v=ctx.raw;return v>0?"rgba(158,206,106,0.35)":v<0?"rgba(247,118,142,0.35)":"rgba(91,96,120,0.2)"},borderColor:function(ctx){var v=ctx.raw;return v>0?"rgba(158,206,106,0.6)":v<0?"rgba(247,118,142,0.6)":"rgba(91,96,120,0.4)"},borderWidth:1,yAxisID:"yRight"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){var v=ctx.raw;if(v>0)return pb1+" has "+v+" more unspent dice";if(v<0)return pb2+" has "+(-v)+" more unspent dice";return"Tied"},footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yRight:{type:"linear",position:"right",grid:yGrid,ticks:yTicks,title:{display:true,text:"Dice advantage",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          + 'document.getElementById("legendDice").innerHTML=\'<span class="legend-item">\'+swatch("rgba(13,148,136,0.7)")+pb1+\' dice advantage</span><span class="legend-item">\'+swatch("rgba(180,83,9,0.7)")+pb2+\' dice advantage</span>\';\n'
+          + 'new Chart(document.getElementById("chartDice"),{type:"bar",data:{labels:S.labels,datasets:[{label:"Dice advantage ("+pb1+" − "+pb2+")",data:S.diceAdvantage,backgroundColor:function(ctx){var v=ctx.raw;return v>0?"rgba(13,148,136,0.35)":v<0?"rgba(180,83,9,0.35)":"rgba(107,114,128,0.2)"},borderColor:function(ctx){var v=ctx.raw;return v>0?"rgba(13,148,136,0.6)":v<0?"rgba(180,83,9,0.6)":"rgba(107,114,128,0.4)"},borderWidth:1,yAxisID:"yRight"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){var v=ctx.raw;if(v>0)return pb1+" has "+v+" more unspent dice";if(v<0)return pb2+" has "+(-v)+" more unspent dice";return"Tied"},footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yRight:{type:"linear",position:"right",grid:yGrid,ticks:yTicks,title:{display:true,text:"Dice advantage",color:"#6b7280"}}}},plugins:[roundBandsPlugin]});\n'
           // Battlefield chart
-          + 'document.getElementById("legendBf").innerHTML=\'<span class="legend-item">\'+swatch("#7aa2f7","dashed")+pb1+\' battlefield</span><span class="legend-item">\'+swatch("#bb9af7","dashed")+pb2+\' battlefield</span><span class="legend-item">\'+swatch("rgba(255,158,100,0.6)")+pb1+\' BF adv</span><span class="legend-item">\'+swatch("rgba(125,207,255,0.6)")+pb2+\' BF adv</span>\';\n'
-          + 'new Chart(document.getElementById("chartBf"),{type:"bar",data:{labels:S.labels,datasets:[{label:pb1+" battlefield",type:"line",data:S.bfValue1,borderColor:"#7aa2f7",backgroundColor:"rgba(122,162,247,0.08)",borderDash:[6,3],fill:false,tension:0.2,pointRadius:2,yAxisID:"yLeft",order:1},{label:pb2+" battlefield",type:"line",data:S.bfValue2,borderColor:"#bb9af7",backgroundColor:"rgba(187,154,247,0.08)",borderDash:[6,3],fill:false,tension:0.2,pointRadius:2,yAxisID:"yLeft",order:1},{label:"BF advantage",data:S.bfValueAdv,backgroundColor:function(ctx){var v=ctx.raw;return v>0?"rgba(255,158,100,0.35)":v<0?"rgba(125,207,255,0.35)":"rgba(91,96,120,0.2)"},borderColor:function(ctx){var v=ctx.raw;return v>0?"rgba(255,158,100,0.6)":v<0?"rgba(125,207,255,0.6)":"rgba(91,96,120,0.4)"},borderWidth:1,yAxisID:"yRight",order:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Battlefield value",color:"#565f89"}},yRight:{type:"linear",position:"right",grid:{drawOnChartArea:false},ticks:yTicks,title:{display:true,text:"BF advantage",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          + 'document.getElementById("legendBf").innerHTML=\'<span class="legend-item">\'+swatch("#0d9488","dashed")+pb1+\' battlefield</span><span class="legend-item">\'+swatch("#b45309","dashed")+pb2+\' battlefield</span><span class="legend-item">\'+swatch("rgba(13,148,136,0.6)")+pb1+\' BF adv</span><span class="legend-item">\'+swatch("rgba(180,83,9,0.6)")+pb2+\' BF adv</span>\';\n'
+          + 'new Chart(document.getElementById("chartBf"),{type:"bar",data:{labels:S.labels,datasets:[{label:pb1+" battlefield",type:"line",data:S.bfValue1,borderColor:"#0d9488",backgroundColor:"rgba(13,148,136,0.2)",borderDash:[6,3],fill:false,tension:0.2,pointRadius:2,yAxisID:"yLeft",order:1},{label:pb2+" battlefield",type:"line",data:S.bfValue2,borderColor:"#b45309",backgroundColor:"rgba(180,83,9,0.2)",borderDash:[6,3],fill:false,tension:0.2,pointRadius:2,yAxisID:"yLeft",order:1},{label:"BF advantage",data:S.bfValueAdv,backgroundColor:function(ctx){var v=ctx.raw;return v>0?"rgba(13,148,136,0.35)":v<0?"rgba(180,83,9,0.35)":"rgba(107,114,128,0.2)"},borderColor:function(ctx){var v=ctx.raw;return v>0?"rgba(13,148,136,0.6)":v<0?"rgba(180,83,9,0.6)":"rgba(107,114,128,0.4)"},borderWidth:1,yAxisID:"yRight",order:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Battlefield value",color:"#6b7280"}},yRight:{type:"linear",position:"right",grid:{drawOnChartArea:false},ticks:yTicks,title:{display:true,text:"BF advantage",color:"#6b7280"}}}},plugins:[roundBandsPlugin]});\n'
           // Attacks chart
-          + 'document.getElementById("legendAtk").innerHTML=\'<span class="legend-item">\'+swatch("#7aa2f7")+pb1+\' attacks</span><span class="legend-item">\'+swatch("#bb9af7")+pb2+\' attacks</span>\';\n'
-          + 'new Chart(document.getElementById("chartAtk"),{type:"bar",data:{labels:S.labels,datasets:[{label:"Attacks",data:S.attackCount.map(function(c){return c>0?c:null}),backgroundColor:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(!who)return"transparent";return who===pb1?"rgba(122,162,247,0.9)":"rgba(187,154,247,0.9)"},borderColor:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(!who)return"transparent";return who===pb1?"#7aa2f7":"#bb9af7"},borderWidth:2,yAxisID:"yLeft",barPercentage:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(who&&ctx.raw>0){var u=S.attackUnits[ctx.dataIndex];return who+" attacked with "+ctx.raw+" unit(s)"+(u?": "+u:"")}return""},footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Units attacking",color:"#565f89"}}}},plugins:[roundBandsPlugin]});\n'
+          + 'document.getElementById("legendAtk").innerHTML=\'<span class="legend-item">\'+swatch("#0d9488")+pb1+\' attacks</span><span class="legend-item">\'+swatch("#b45309")+pb2+\' attacks</span>\';\n'
+          + 'new Chart(document.getElementById("chartAtk"),{type:"bar",data:{labels:S.labels,datasets:[{label:"Attacks",data:S.attackCount.map(function(c){return c>0?c:null}),backgroundColor:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(!who)return"transparent";return who===pb1?"rgba(13,148,136,0.85)":"rgba(180,83,9,0.85)"},borderColor:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(!who)return"transparent";return who===pb1?"#0d9488":"#b45309"},borderWidth:2,yAxisID:"yLeft",barPercentage:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){var who=S.attackPlayer[ctx.dataIndex];if(who&&ctx.raw>0){var u=S.attackUnits[ctx.dataIndex];return who+" attacked with "+ctx.raw+" unit(s)"+(u?": "+u:"")}return""},footer:function(i){if(!i.length)return"";var sit=S.situation[i[0].dataIndex];return sit?sit.desc:""}}}},scales:{x:{grid:xGrid,ticks:xTicks},yLeft:{type:"linear",position:"left",grid:yGrid,ticks:yTicks,min:0,title:{display:true,text:"Units attacking",color:"#6b7280"}}}},plugins:[roundBandsPlugin]});\n'
+          + 'window.addEventListener("beforeprint",function(){document.querySelectorAll(".chart-box canvas").forEach(function(c){var ch=Chart.getChart(c);if(ch)ch.resize()})});\n'
           + '<\/script>\n</body>\n</html>';
 
         // Trigger download
@@ -1640,11 +1842,12 @@
         renderNarrative();
       }
 
-      [layerHealth, layerDice, layerAttacks, layerBattlefield].forEach(function (cb) {
+      [layerHealth, layerTotalAdv, layerDice, layerBattlefield, layerAttacks].forEach(function (cb) {
         cb.addEventListener('change', updateChart);
       });
 
       document.getElementById('exportBtn').addEventListener('click', exportReport);
+      document.getElementById('copyDiscordBtn').addEventListener('click', copyForDiscord);
 
       document.getElementById('parseChatBtn').addEventListener('click', function () {
         var text = document.getElementById('chatInput').value.trim();

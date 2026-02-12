@@ -1,4 +1,4 @@
-# Ashes Reborn Game Visualizer
+# Vermillion: Ashes Game Report
 
 A single-page tool to visualize [Ashteki](https://github.com/Ashteki/ashteki) game chat logs for [Ashes: Reborn](https://www.plaidhatgames.com/board-games/ashes-reborn/). Paste a game's chat log and get interactive charts, strategic analysis, game statistics, and an accessible narrative — all in the browser.
 
@@ -20,28 +20,25 @@ A single-page tool to visualize [Ashteki](https://github.com/Ashteki/ashteki) ga
 
 - **Phoenixborn cards** – Displays each player's Phoenixborn with starting life values. All 32 standard Phoenixborn are supported with hardcoded life totals.
 
-- **Game result banner** – Shows the winner, their Phoenixborn, the round/turn, and method (concession vs defeat).
+- **Game result banner** – Shows the winner (highlighted in gold), their Phoenixborn, the round/turn, and method (concession vs defeat).
 
 - **Layered chart views** – Toggle any combination of layers using checkboxes:
   - **Health** – Both Phoenixborn's remaining health over time (line chart)
-  - **Dice advantage** – Unspent dice difference per turn pair, estimated from chat (bar chart, green/red). Each player starts with 10 dice per round.
-  - **Attacks** – When each player attacked and with how many units, with tooltips showing unit names (narrow bar chart)
-  - **Battlefield value** – Total dice cost of units on the battlefield for each player (dashed lines), plus the battlefield advantage as bars (orange/cyan). Tracks units entering play, being destroyed, removed from the game, and manual mode corrections.
+  - **Total resource advantage** – Unspent dice + battlefield value, Chess.com-style (stacked bars on right axis)
+  - **Dice advantage** – Unspent dice difference per turn pair, estimated from chat (bar chart). Each player starts with 10 dice per round.
+  - **Battlefield value** – Total dice cost of units on the battlefield for each player (dashed lines), plus the battlefield advantage as bars. Tracks units entering play, being destroyed, removed from the game, and manual mode corrections.
 
-  Layers can be freely combined — e.g. overlay battlefield advantage with dice advantage to compare resource investment vs tempo, or attacks with health to see the impact of each swing.
+  Layers can be freely combined — e.g. overlay total resource advantage with health to see the impact of each swing.
 
-- **Strategic game state analysis** – Each turn pair is assessed as one of 9 strategic situations based on dice advantage, battlefield advantage, and damage dealt:
-  - **Active dominance** – One player leads both resources and is dealing damage
-  - **Resource dominance** – One player leads both resources but not converting to damage
-  - **Aggro control** – Battlefield leader is dealing damage with dice parity
-  - **Board control** – Battlefield leader holding position with dice parity
-  - **Direct aggression** – Dice leader is dealing damage with battlefield parity
-  - **Holding back** – Dice leader saving resources with battlefield parity
-  - **Contested** – Different players lead dice vs battlefield (compound description)
-  - **Full parity** – No advantage either way, no damage
-  - **Trading blows** – No advantage either way, but damage is being dealt
+- **Strategic game state analysis** – Each turn pair is assessed as one of 6 strategic situations based on dice advantage, battlefield advantage, and health advantage:
+  - **Dominant Position** – One player leads both dice and battlefield
+  - **Committed Advantage** – Battlefield leader with dice parity
+  - **Unrealized Advantage** – Dice leader with battlefield parity
+  - **Comfortable Parity** – Parity on resources, but one player has a health lead
+  - **Parity** – No advantage either way
+  - **Split (Proactive / Reactive)** – Different players lead dice vs battlefield
 
-  The game state is shown as a colored strip below the charts with the controlling Phoenixborn's name on each segment. Parity states are left unlabeled; contested states show both players' initials.
+  When the advantaged player is 6+ life behind, the state adds "With Compensation". The game state is shown as a colored ribbon below the charts.
 
 - **Game summary statistics** – A table comparing both players across:
   - Starting and final health
@@ -51,9 +48,11 @@ A single-page tool to visualize [Ashteki](https://github.com/Ashteki/ashteki) ga
   - Dice spent vs dice available
   - Turns in control vs turns at parity/contested
 
-- **Accessible game narrative** – A text-based turn-by-turn account of the game for screen readers, including damage, attacks, dice/battlefield advantage, and strategic state per turn pair. Uses ARIA attributes for accessibility.
+- **Accessible game narrative** – A text-based turn-by-turn account of the game for screen readers. Includes damage, attacks, dice/battlefield advantage, and strategic state per turn pair. **Pivot turns** (where resource advantage swings by ≥2) are highlighted in gold with the swing amount and direction, plus chat lines from that turn.
 
-- **Export report** – Download a standalone HTML file containing all four charts (Health, Dice Advantage, Battlefield Value, Attacks), the game state strip, summary statistics, and the full narrative. The exported file is self-contained (loads Chart.js from CDN, all data and styles inline) and can be shared or viewed offline.
+- **Copy for Discord** – One-click copy of a formatted summary including game result, stats table (Final health, Damage dealt, Attacks, Dice spent, Cards played, Turns in control), and the **hypest turn** — the turn with the biggest resource swing. Ready to paste into Discord chat.
+
+- **Export report** – Download a standalone HTML file containing all charts (Health, Total Advantage, Dice Advantage, Battlefield Value, Attacks), the game state strip, summary statistics, and the full narrative. Self-contained (loads Chart.js from CDN, all data and styles inline) and can be shared or viewed offline.
 
 ## How it works
 
@@ -61,18 +60,20 @@ The x-axis represents **turn pairs**, labeled as `R{round}.{turn}` (e.g. `R1.4`)
 
 **Turn-pair model**: In Ashes, each turn number has two players acting. The parser groups both players' actions within the same turn number into a single data point, giving a cleaner view of the game flow.
 
-**Dice tracking**: Every round, each player starts with 10 dice. The parser detects dice spending from two chat patterns — cost prefixes before actions and inline die use — and estimates unspent dice per turn pair.
+**Dice tracking**: Every round, each player starts with 10 dice. The parser detects dice spending from two chat patterns — cost prefixes before actions and inline die use — and estimates unspent dice per turn pair. A heuristic treats consecutive same-player, same-die-type inline uses (e.g. one die used twice for place + remove status token) as a single die.
 
-**Battlefield tracking**: When a unit enters play (`"puts UnitName (id) into play"`), the parser associates it with the dice cost from the preceding cost line (or 0 for free summons). When a unit is destroyed, removed from the game, or manually moved out of play, its dice value is subtracted.
+**Battlefield tracking**: When a unit enters play (`"puts UnitName (id) into play"`), the parser associates it with the dice cost from the preceding cost line (or uses a custom override for units like Raptor Herder, Pack Wolf, etc.). When a unit is destroyed, removed from the game, or manually moved out of play, its dice value is subtracted.
 
 **Damage tracking**: Three layers of detection ensure accurate health tracking. Standard `"takes/receives N damage"` lines handle most cases. Manual mode `"adds a damage"` lines catch corrections made during manual play. As a safety net, `"PBName is destroyed"` forces health to 0 if any damage was unaccounted for in the chat log.
 
 ## Visual design
 
-- Dark theme inspired by Tokyonight
+- Off-white background with teal (P1) and amber (P2) accents for charts and Phoenixborn cards
+- Vermillion accent color for the Parse button and title
+- Lora for the app title; Poppins for body text
 - Alternating round background bands on charts for visual grouping
 - Custom HTML legend with Phoenixborn names and correct color coding
-- Strategy strip with colored segments and Phoenixborn names (progressive abbreviation for narrow segments)
+- Semi-transparent game state ribbon with colored segments
 
 ## Hosting as a GitHub Page
 
