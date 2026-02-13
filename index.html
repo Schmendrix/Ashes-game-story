@@ -499,6 +499,8 @@
       // Unit name -> dice cost override (for units that enter under special conditions)
       var UNIT_DICE_COST = {
         'Reborn Chimera': 3, 'reborn chimera': 3,
+        'Divinity Mount': 3, 'divinity mount': 3,
+        'Fallen': 1, 'fallen': 1,
         'Raptor Herder': 0.5, 'Raptor hatchling': 0.5, 'Raptor Hatchling': 0.5,
         'Pterra Herder': 0.5, 'Pterra hatchling': 0.5, 'Pterra Hatchling': 0.5,
         'Hand of Spear': 1, 'Hand of Shield': 1,
@@ -732,11 +734,11 @@
           }
 
           // Phoenixborn damage (accumulated into current turn)
-          // Pattern A: "PBName receives/takes N damage"
+          // Pattern A: "PBName receives/takes N damage" (including "N fatigue damage")
           for (var j = 0; j < Object.keys(pbToPlayer).length; j++) {
             var pbName = Object.keys(pbToPlayer)[j];
             var escaped = pbName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            var damageMatch = line.match(new RegExp('^' + escaped + '\\s+(?:receives|takes)\\s+(\\d+)\\s+damage', 'i'));
+            var damageMatch = line.match(new RegExp('^' + escaped + '\\s+(?:receives|takes)\\s+(\\d+)\\s+(?:fatigue\\s+)?damage', 'i'));
             if (damageMatch) {
               var amount = parseInt(damageMatch[1], 10);
               var damagedPlayer = pbToPlayer[pbName];
@@ -747,12 +749,27 @@
               break;
             }
           }
-          // Pattern A2: "X uses/plays Y to deal N damage to PBName" (skip if damage was prevented)
+          // Pattern A2: "X uses/plays Y to deal N damage to PBName" (skip if damage was prevented, redirected, or next line has "PBName receives" which Pattern A will handle)
           for (var j1 = 0; j1 < Object.keys(pbToPlayer).length; j1++) {
             var pbName1 = Object.keys(pbToPlayer)[j1];
             var escaped1 = pbName1.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             var dealMatch = line.match(new RegExp('deal\\s+(\\d+)\\s+damage\\s+to\\s+' + escaped1, 'i'));
             if (dealMatch && !/prevent(?:ed)?/i.test(line)) {
+              // Skip if next line is "PBName receives N damage" — Pattern A will handle it to avoid double-counting
+              var nextLineA2 = i + 1 < lines.length ? lines[i + 1] : '';
+              if (new RegExp('^' + escaped1 + '\\s+(?:receives|takes)\\s+\\d+\\s+(?:fatigue\\s+)?damage', 'i').test(nextLineA2)) {
+                break;
+              }
+              // Skip if damage was redirected to a unit
+              var redirected = false;
+              for (var ri = 1; ri <= 4 && i + ri < lines.length; ri++) {
+                var nextLn = lines[i + ri];
+                if (/redirect.*the\s+damage/i.test(nextLn)) {
+                  redirected = true;
+                  break;
+                }
+              }
+              if (redirected) break;
               var dealAmt = parseInt(dealMatch[1], 10);
               var damagedPlayer1 = pbToPlayer[pbName1];
               health[damagedPlayer1] = Math.max(0, health[damagedPlayer1] - dealAmt);
@@ -818,11 +835,11 @@
               break;
             }
           }
-          // Pattern D: "remove N wounds from PBName" / "uses Heal to remove N wounds from PBName"
+          // Pattern D: "remove(s) N wounds from PBName" / "X removes N wounds from PBName" (e.g. Generosity)
           for (var j4 = 0; j4 < Object.keys(pbToPlayer).length; j4++) {
             var pbName4 = Object.keys(pbToPlayer)[j4];
             var escaped4 = pbName4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            var healMatch = line.match(new RegExp('remove\\s+(\\d+)\\s+wounds?\\s+from\\s+' + escaped4, 'i'));
+            var healMatch = line.match(new RegExp('removes?\\s+(\\d+)\\s+wounds?\\s+from\\s+' + escaped4, 'i'));
             if (healMatch) {
               var healAmt = parseInt(healMatch[1], 10);
               var healedPlayer = pbToPlayer[pbName4];
