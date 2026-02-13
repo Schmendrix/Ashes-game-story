@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vermillion: Ashes Game Report</title>
+  <script>
+    window.OVERLAY_MODE = /[?&](?:overlay=1|mode=overlay)/.test(location.search);
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
@@ -49,6 +52,13 @@
       color: var(--muted);
       font-size: 0.9rem;
       margin-bottom: 1.5rem;
+    }
+    .subtitle .overlay-link {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .subtitle .overlay-link:hover {
+      text-decoration: underline;
     }
     .phoenixborn-cards {
       display: flex;
@@ -330,6 +340,10 @@
     }
     .stats-table .p1-col { color: var(--p1); }
     .stats-table .p2-col { color: var(--p2); }
+    .stats-table tr.dmg-dice-row td { font-weight: 600; border-bottom: 2px solid var(--border); }
+    .stats-table tr.dmg-dice-row .stat-label { font-weight: 700; color: var(--text); }
+    .stats-table td.dmg-dice-lead-p1 { background: var(--p1-muted); }
+    .stats-table td.dmg-dice-lead-p2 { background: var(--p2-muted); }
     .export-row {
       margin-bottom: 1rem;
       display: flex;
@@ -386,11 +400,114 @@
     .explainer-content li {
       margin-bottom: 0.25rem;
     }
+    /* Overlay mode */
+    body.overlay-mode { background: transparent; padding: 0; min-height: 0; }
+    body.overlay-mode #main-content { display: none !important; }
+    #overlay-root { display: none; }
+    body.overlay-mode #overlay-root { display: block; }
+    .overlay-right-panel {
+      position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+      display: flex; flex-direction: column; align-items: flex-end; z-index: 10;
+    }
+    .overlay-position-bar {
+      padding: 0.5rem 1rem; font-weight: 600; font-size: 1rem;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .overlay-position-bar .turn-label { color: var(--muted); }
+    .overlay-position-bar .state-badge {
+      padding: 0.35rem 0.65rem; border-radius: 6px;
+      border-left: 4px solid; font-size: 0.95rem;
+    }
+    .overlay-hype-popup {
+      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      margin-bottom: 0.35rem; padding: 0.35rem 0.6rem; font-size: 0.9rem; font-weight: 700;
+      background: var(--gold); color: #1a1a1a; border-radius: 6px;
+      white-space: nowrap; text-shadow: none; z-index: 5;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .overlay-controls {
+      display: flex; gap: 0.5rem; margin-top: 0.25rem; align-self: flex-end;
+    }
+    .overlay-paste-toggle,
+    .overlay-toggle-stats {
+      font-family: inherit; font-size: 0.9rem; padding: 0.25rem 0.5rem;
+      cursor: pointer; color: var(--accent); background: transparent; border: none;
+    }
+    .overlay-paste-toggle:hover,
+    .overlay-toggle-stats:hover { text-decoration: underline; }
+    .overlay-paste-panel {
+      margin-top: 0.25rem; width: 280px; max-height: 0; overflow: hidden;
+      transition: max-height 0.2s ease-out;
+    }
+    .overlay-paste-panel.expanded { max-height: 180px; }
+    .overlay-paste-panel textarea { min-height: 70px; font-size: 0.9rem; font-family: inherit; width: 100%; }
+    .overlay-stats-popup {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      padding: 0.75rem 1rem; font-size: 0.85rem;
+      display: flex; gap: 1.5rem; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+    .overlay-stats-popup .player-col { min-width: 100px; }
+    .overlay-stats-popup .player-col.p1 { color: var(--p1); }
+    .overlay-stats-popup .player-col.p2 { color: var(--p2); }
+    .overlay-stats-popup .dmg-dice-row {
+      margin-top: 0.5rem; padding: 0.4rem 0.6rem; font-size: 1.1rem; font-weight: 700;
+      border-radius: 6px;
+    }
+    .overlay-stats-popup .dmg-dice-row.lead-p1 { background: var(--p1-muted); }
+    .overlay-stats-popup .dmg-dice-row.lead-p2 { background: var(--p2-muted); }
+    .overlay-stats-popup .dmg-dice-row.tie { background: rgba(107,114,128,0.2); }
+    .overlay-status-modal {
+      position: fixed; inset: 0; z-index: 100; display: none;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+    }
+    .overlay-status-modal.visible { display: flex; }
+    .overlay-status-content {
+      background: rgba(235, 232, 226, 0.92); border-radius: 12px; padding: 1rem;
+      max-width: 90vw; max-height: 85vh; overflow: auto;
+    }
+    .overlay-status-content h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .overlay-status-content .chart-wrap { height: 360px; width: 100%; min-width: 480px; }
+    .overlay-status-close {
+      display: block; margin-top: 0.5rem; padding: 0.35rem 0.75rem;
+      background: var(--accent); color: #fff; border: none; border-radius: 6px;
+      cursor: pointer; font-family: inherit;
+    }
   </style>
 </head>
 <body>
+  <div id="overlay-root">
+    <div class="overlay-right-panel">
+      <div id="overlayPositionBar" class="overlay-position-bar hidden" style="position:relative">
+        <div id="overlayHypePopup" class="overlay-hype-popup hidden"></div>
+        <span id="overlayTurnLabel" class="turn-label"></span>
+        <span id="overlayStateBadge" class="state-badge"></span>
+      </div>
+      <div class="overlay-controls">
+        <button type="button" id="overlayPasteToggle" class="overlay-paste-toggle">Paste ▼</button>
+        <button type="button" id="overlayToggleStats" class="overlay-toggle-stats">Show stats</button>
+        <button type="button" id="overlayClearBtn" class="overlay-paste-toggle">Clear</button>
+        <button type="button" id="overlayStatusReportBtn" class="overlay-paste-toggle">Status report</button>
+      </div>
+      <div id="overlayPastePanel" class="overlay-paste-panel">
+        <textarea id="overlayChatInput" class="chat-textarea" placeholder="Paste turns from Ashteki chat..."></textarea>
+        <button type="button" id="overlayAddTurnsBtn" class="parse-btn">Add turns</button>
+      </div>
+    </div>
+    <div id="overlayStatsPopup" class="overlay-stats-popup hidden"></div>
+    <div id="overlayStatusModal" class="overlay-status-modal">
+      <div class="overlay-status-content">
+        <h3>Mid-game status</h3>
+        <p class="overlay-status-legend" style="font-size:0.8rem;color:var(--muted);margin:0 0 0.5rem;">Gold = hype turns (resource swing &gt;2)</p>
+        <div class="chart-wrap"><canvas id="overlayStatusChart"></canvas></div>
+        <button type="button" id="overlayStatusClose" class="overlay-status-close">Close</button>
+      </div>
+    </div>
+    <span id="overlayError" class="hidden" style="position:fixed;top:0.5rem;left:50%;transform:translateX(-50%);background:var(--accent-muted);color:var(--red);padding:0.25rem 0.5rem;font-size:0.8rem;z-index:20;"></span>
+  </div>
+  <div id="main-content">
   <h1>Vermillion: Ashes Game Report</h1>
-  <p class="subtitle">Paste a game chat log to visualize health, dice advantage, and attacks turn by turn. Phoenixborn starting life uses the standard card values (health = middle stat).</p>
+  <p class="subtitle">Paste a game chat log to visualize health, dice advantage, and attacks turn by turn. Phoenixborn starting life uses the standard card values (health = middle stat). <a href="?overlay=1" class="overlay-link">Open overlay mode for OBS streaming</a></p>
 
   <details class="chart-explainer">
     <summary>How to read the charts</summary>
@@ -469,9 +586,12 @@
     <h2 class="narrative-heading">Game Narrative</h2>
     <div id="narrativeContent" class="narrative-content"></div>
   </div>
+  </div><!-- /main-content -->
 
   <script>
     document.addEventListener('DOMContentLoaded', function () {
+      if (window.OVERLAY_MODE) document.body.classList.add('overlay-mode');
+
       var errorBox = document.getElementById('errorBox');
       var phoenixbornSection = document.getElementById('phoenixbornSection');
       var chartSection = document.getElementById('chartSection');
@@ -614,8 +734,8 @@
 
         // Summary stat counters
         var stats = {};
-        stats[p1] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0 };
-        stats[p2] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0 };
+        stats[p1] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0 };
+        stats[p2] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0 };
 
         function makeState(attackPlayer, attackCount) {
           var state = { round: currentRound, players: {} };
@@ -853,6 +973,7 @@
               var healedPlayer = pbToPlayer[pbName4];
               var maxLife = healedPlayer === p1 ? life1 : life2;
               health[healedPlayer] = Math.min(maxLife, health[healedPlayer] + healAmt);
+              if (stats[healedPlayer]) stats[healedPlayer].totalHealing += healAmt;
               break;
             }
           }
@@ -1810,12 +1931,27 @@
           return '<tr>' + td + '<td class="num p1-col">' + v1 + '</td><td class="num p2-col">' + v2 + '</td></tr>';
         }
 
+        var d1 = s1.totalDiceSpent || 0;
+        var d2 = s2.totalDiceSpent || 0;
+        var impact1 = (s1.totalDamageDealt || 0) + (s1.totalHealing || 0);
+        var impact2 = (s2.totalDamageDealt || 0) + (s2.totalHealing || 0);
+        var ratio1 = d1 > 0 ? (impact1 / d1) : null;
+        var ratio2 = d2 > 0 ? (impact2 / d2) : null;
+        var disp1 = ratio1 != null ? ratio1.toFixed(2) : '—';
+        var disp2 = ratio2 != null ? ratio2.toFixed(2) : '—';
+        var lead1 = ratio1 != null && (ratio2 == null || ratio1 > ratio2);
+        var lead2 = ratio2 != null && (ratio1 == null || ratio2 > ratio1);
+
         var html = '<table class="stats-table">';
         html += '<thead><tr><th></th><th class="p1-col">' + escapeHtml(pb1) + '</th><th class="p2-col">' + escapeHtml(pb2) + '</th></tr></thead>';
         html += '<tbody>';
+        html += '<tr class="dmg-dice-row"><td class="stat-label" title="(Damage dealt + healing) per die spent">Dmg+heal/dice</td>';
+        html += '<td class="num p1-col' + (lead1 ? ' dmg-dice-lead-p1' : '') + '">' + disp1 + '</td>';
+        html += '<td class="num p2-col' + (lead2 ? ' dmg-dice-lead-p2' : '') + '">' + disp2 + '</td></tr>';
         html += row('Starting health', startH1, startH2);
         html += row('Final health', finalH1, finalH2);
         html += row('Damage dealt to PB', s1.totalDamageDealt, s2.totalDamageDealt, 'Gross damage (sum of all damage events, not net of healing)');
+        html += row('Healing', s1.totalHealing || 0, s2.totalHealing || 0, 'Wounds removed from own Phoenixborn');
         html += row('Total attacks', s1.totalAttacks, s2.totalAttacks);
         html += row('Total units attacking', s1.totalUnitsAttacking, s2.totalUnitsAttacking);
         html += row('Cards played', s1.cardsPlayed, s2.cardsPlayed);
@@ -1993,10 +2129,18 @@
         }
         var colL = 20;
         var colN = 6;
+        var dd1 = s1.totalDiceSpent || 0;
+        var dd2 = s2.totalDiceSpent || 0;
+        var imp1 = (s1.totalDamageDealt || 0) + (s1.totalHealing || 0);
+        var imp2 = (s2.totalDamageDealt || 0) + (s2.totalHealing || 0);
+        var r1 = dd1 > 0 ? (imp1 / dd1).toFixed(2) : '—';
+        var r2 = dd2 > 0 ? (imp2 / dd2).toFixed(2) : '—';
         out += '```\n';
         out += pad('', colL) + pad(pb1, colN) + pad(pb2, colN) + '\n';
+        out += pad('Dmg+heal/dice', colL) + pad(r1, colN) + pad(r2, colN) + '\n';
         out += pad('Final health', colL) + pad(finalH1, colN) + pad(finalH2, colN) + '\n';
         out += pad('Damage dealt', colL) + pad(s1.totalDamageDealt || 0, colN) + pad(s2.totalDamageDealt || 0, colN) + '\n';
+        out += pad('Healing', colL) + pad(s1.totalHealing || 0, colN) + pad(s2.totalHealing || 0, colN) + '\n';
         out += pad('Attacks', colL) + pad(s1.totalAttacks || 0, colN) + pad(s2.totalAttacks || 0, colN) + '\n';
         out += pad('Dice spent', colL) + pad(s1.totalDiceSpent || 0, colN) + pad(s2.totalDiceSpent || 0, colN) + '\n';
         out += pad('Cards played', colL) + pad(s1.cardsPlayed || 0, colN) + pad(s2.cardsPlayed || 0, colN) + '\n';
@@ -2183,6 +2327,10 @@
           + '.stats-table .stat-label{color:var(--muted)}\n'
           + '.stats-table .p1-col{color:var(--p1)}\n'
           + '.stats-table .p2-col{color:var(--p2)}\n'
+          + '.stats-table tr.dmg-dice-row td{font-weight:600;border-bottom:2px solid var(--border)}\n'
+          + '.stats-table tr.dmg-dice-row .stat-label{font-weight:700;color:var(--text)}\n'
+          + '.stats-table td.dmg-dice-lead-p1{background:var(--p1-muted)}\n'
+          + '.stats-table td.dmg-dice-lead-p2{background:var(--p2-muted)}\n'
           + '.footer{color:var(--muted);font-size:0.75rem;margin-top:1.5rem;text-align:center}\n'
           + '.advantage-desc{font-size:0.85rem;color:var(--muted);margin:0 0 0.5rem}\n'
           + '@media print{@page{size:landscape;margin:0.5in}body{zoom:0.48;padding:0.5rem;min-height:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact}.chart-box{height:140px!important;page-break-inside:avoid}.chart-box canvas{max-height:120px!important}.strip-bar,.phoenixborn-cards,.stats-box,.narrative,.game-result{page-break-inside:avoid}h2,h3{margin-top:0.4rem;page-break-after:avoid}}\n'
@@ -2260,45 +2408,304 @@
         renderNarrative();
       }
 
-      [layerHealth, layerTotalAdv, layerDice, layerBattlefield, layerAttacks].forEach(function (cb) {
-        cb.addEventListener('change', updateChart);
-      });
-
-      document.getElementById('exportBtn').addEventListener('click', exportReport);
-      document.getElementById('copyDiscordBtn').addEventListener('click', copyForDiscord);
-
-      document.getElementById('parseChatBtn').addEventListener('click', function () {
-        var text = document.getElementById('chatInput').value.trim();
-        if (!text) {
-          showError('Paste a game chat log first.');
-          return;
+      if (!window.OVERLAY_MODE) {
+        [layerHealth, layerTotalAdv, layerDice, layerBattlefield, layerAttacks].forEach(function (cb) {
+          cb.addEventListener('change', updateChart);
+        });
+        document.getElementById('exportBtn').addEventListener('click', exportReport);
+        document.getElementById('copyDiscordBtn').addEventListener('click', copyForDiscord);
+        document.getElementById('parseChatBtn').addEventListener('click', function () {
+          var text = document.getElementById('chatInput').value.trim();
+          if (!text) { showError('Paste a game chat log first.'); return; }
+          var normalized = parseChatLog(text);
+          if (!normalized) {
+            showError('Could not parse game chat. Ensure it includes "X brings Y to battle" and "Turn N - Player" lines.');
+            return;
+          }
+          if (!normalized.snapshots.length) { showError('No turns found in the chat log.'); return; }
+          onReplayLoaded(normalized);
+        });
+        if (window.location.search.indexOf('demo=1') !== -1) {
+          fetch('demo-chat.txt')
+            .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('Could not load demo-chat.txt')); })
+            .then(function (text) {
+              var chatInput = document.getElementById('chatInput');
+              if (chatInput) chatInput.value = text;
+              var normalized = parseChatLog(text.trim());
+              if (normalized && normalized.snapshots.length) onReplayLoaded(normalized);
+            })
+            .catch(function (e) {
+              showError('Demo failed: ' + (e && e.message ? e.message : 'load demo-chat.txt with ?demo=1 when serving over http.'));
+            });
         }
-        var normalized = parseChatLog(text);
-        if (!normalized) {
-          showError('Could not parse game chat. Ensure it includes "X brings Y to battle" and "Turn N - Player" lines.');
-          return;
-        }
-        if (!normalized.snapshots.length) {
-          showError('No turns found in the chat log.');
-          return;
-        }
-        onReplayLoaded(normalized);
-      });
+      }
 
-      if (window.location.search.indexOf('demo=1') !== -1) {
-        fetch('demo-chat.txt')
-          .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('Could not load demo-chat.txt')); })
-          .then(function (text) {
-            var chatInput = document.getElementById('chatInput');
-            if (chatInput) chatInput.value = text;
-            var normalized = parseChatLog(text.trim());
-            if (normalized && normalized.snapshots.length) {
-              onReplayLoaded(normalized);
+      if (window.OVERLAY_MODE) {
+        var accumulatedChatBuffer = '';
+        var overlayReplayData = null;
+        var overlayPositionBar = document.getElementById('overlayPositionBar');
+        var overlayTurnLabel = document.getElementById('overlayTurnLabel');
+        var overlayStateBadge = document.getElementById('overlayStateBadge');
+        var overlayStatsPopup = document.getElementById('overlayStatsPopup');
+        var overlayToggleStats = document.getElementById('overlayToggleStats');
+        var overlayError = document.getElementById('overlayError');
+        var overlayChatInput = document.getElementById('overlayChatInput');
+
+        var STATE_COLORS = {
+          'dominant-position': '#c9a227',
+          'committed-advantage': '#059669',
+          'unrealized-advantage': '#0284c7',
+          'comfortable-parity': '#6b7280',
+          'parity': '#6b7280',
+          'split': '#7c3aed'
+        };
+        var STATE_LABELS = {
+          'dominant-position': 'Dominant Position',
+          'committed-advantage': 'Committed Advantage',
+          'unrealized-advantage': 'Unrealized Advantage',
+          'comfortable-parity': 'Comfortable Parity',
+          'parity': 'Parity',
+          'split': 'Split (Proactive / Reactive)'
+        };
+
+        var overlayHypePopup = document.getElementById('overlayHypePopup');
+        var hypePopupTimeout = null;
+
+        function updateOverlayDisplay(checkHypeTurn) {
+          if (!overlayReplayData) return;
+          replayData = overlayReplayData;
+          var series = buildSeries();
+          if (!series || !series.labels.length) return;
+          var lastIdx = series.labels.length - 1;
+          while (lastIdx >= 0 && series.labels[lastIdx].indexOf('start') !== -1) lastIdx--;
+          if (lastIdx < 0) return;
+          var sit = series.situation[lastIdx];
+          var adv = series.totalAdvantage[lastIdx] || 0;
+          if (checkHypeTurn) {
+            var prevIdx = lastIdx - 1;
+            while (prevIdx >= 0 && series.labels[prevIdx].indexOf('start') !== -1) prevIdx--;
+            var prevAdv = prevIdx >= 0 ? (series.totalAdvantage[prevIdx] || 0) : adv;
+            var swing = Math.abs(adv - prevAdv);
+            if (swing > 2) {
+              overlayHypePopup.textContent = 'Hype turn! ' + series.labels[lastIdx] + '!';
+              overlayHypePopup.classList.remove('hidden');
+              if (hypePopupTimeout) clearTimeout(hypePopupTimeout);
+              hypePopupTimeout = setTimeout(function () {
+                overlayHypePopup.classList.add('hidden');
+                hypePopupTimeout = null;
+              }, 30000);
+            } else {
+              overlayHypePopup.classList.add('hidden');
+              if (hypePopupTimeout) { clearTimeout(hypePopupTimeout); hypePopupTimeout = null; }
             }
-          })
-          .catch(function (e) {
-            showError('Demo failed: ' + (e && e.message ? e.message : 'load demo-chat.txt with ?demo=1 when serving over http.'));
+          }
+          var pb1 = overlayReplayData.phoenixborn[overlayReplayData.playerNames[0]];
+          var pb2 = overlayReplayData.phoenixborn[overlayReplayData.playerNames[1]];
+          var stateLabel = STATE_LABELS[sit.key] || sit.desc;
+          var leadingPB = sit.player || (adv > 0 ? pb1 : adv < 0 ? pb2 : null);
+          var advStr = leadingPB ? ('+' + Math.abs(adv)) : '0';
+          var displayText = leadingPB ? leadingPB + ' ' + advStr + ', ' + stateLabel : sit.desc;
+          overlayTurnLabel.textContent = series.labels[lastIdx];
+          overlayStateBadge.textContent = displayText;
+          overlayStateBadge.style.borderLeftColor = STATE_COLORS[sit.key] || '#6b7280';
+          overlayStateBadge.style.background = (STATE_COLORS[sit.key] || '#6b7280') + '22';
+          overlayPositionBar.classList.remove('hidden');
+
+          if (!overlayStatsPopup.classList.contains('hidden')) {
+            var s1 = overlayReplayData.stats[overlayReplayData.playerNames[0]];
+            var s2 = overlayReplayData.stats[overlayReplayData.playerNames[1]];
+            var d1 = (s1 && s1.totalDiceSpent) || 0;
+            var d2 = (s2 && s2.totalDiceSpent) || 0;
+            var imp1 = (s1 ? s1.totalDamageDealt : 0) + (s1 ? s1.totalHealing : 0);
+            var imp2 = (s2 ? s2.totalDamageDealt : 0) + (s2 ? s2.totalHealing : 0);
+            var r1 = d1 > 0 ? (imp1 / d1).toFixed(2) : '—';
+            var r2 = d2 > 0 ? (imp2 / d2).toFixed(2) : '—';
+            var lead1 = d1 > 0 && (d2 === 0 || (imp1 / d1) > (imp2 / d2));
+            var lead2 = d2 > 0 && (d1 === 0 || (imp2 / d2) > (imp1 / d1));
+            var ddClass1 = lead1 ? 'lead-p1' : (lead2 ? '' : 'tie');
+            var ddClass2 = lead2 ? 'lead-p2' : (lead1 ? '' : 'tie');
+            overlayStatsPopup.innerHTML =
+              '<div class="player-col p1">' + escapeHtml(pb1) + '<br>Dice: ' + d1 + '<br>Damage: ' + (s1 ? s1.totalDamageDealt : 0) + '<br>Heal: ' + (s1 ? s1.totalHealing : 0) +
+              '<div class="dmg-dice-row ' + ddClass1 + '">Dmg+heal/dice: ' + r1 + '</div></div>' +
+              '<div class="player-col p2">' + escapeHtml(pb2) + '<br>Dice: ' + d2 + '<br>Damage: ' + (s2 ? s2.totalDamageDealt : 0) + '<br>Heal: ' + (s2 ? s2.totalHealing : 0) +
+              '<div class="dmg-dice-row ' + ddClass2 + '">Dmg+heal/dice: ' + r2 + '</div></div>';
+          }
+        }
+
+        var pastePanel = document.getElementById('overlayPastePanel');
+        var pasteToggle = document.getElementById('overlayPasteToggle');
+        var pasteExpanded = localStorage.getItem('vermillion-overlay-paste-expanded') === '1';
+        if (pasteExpanded) {
+          pastePanel.classList.add('expanded');
+          pasteToggle.textContent = '▲ Collapse';
+        }
+
+        pasteToggle.addEventListener('click', function () {
+          pasteExpanded = !pasteExpanded;
+          pastePanel.classList.toggle('expanded', pasteExpanded);
+          pasteToggle.textContent = pasteExpanded ? '▲ Collapse' : 'Paste ▼';
+          localStorage.setItem('vermillion-overlay-paste-expanded', pasteExpanded ? '1' : '0');
+        });
+
+        var statsVisible = localStorage.getItem('vermillion-overlay-stats') === '1';
+        if (statsVisible) overlayStatsPopup.classList.remove('hidden');
+        overlayToggleStats.textContent = statsVisible ? 'Hide stats' : 'Show stats';
+
+        overlayToggleStats.addEventListener('click', function () {
+          statsVisible = !statsVisible;
+          localStorage.setItem('vermillion-overlay-stats', statsVisible ? '1' : '0');
+          overlayStatsPopup.classList.toggle('hidden', !statsVisible);
+          overlayToggleStats.textContent = statsVisible ? 'Hide stats' : 'Show stats';
+          if (statsVisible) updateOverlayDisplay();
+        });
+
+        document.getElementById('overlayClearBtn').addEventListener('click', function () {
+          accumulatedChatBuffer = '';
+          overlayReplayData = null;
+          overlayChatInput.value = '';
+          overlayPositionBar.classList.add('hidden');
+          overlayHypePopup.classList.add('hidden');
+          if (hypePopupTimeout) { clearTimeout(hypePopupTimeout); hypePopupTimeout = null; }
+          overlayStatsPopup.classList.add('hidden');
+          overlayStatsPopup.innerHTML = '';
+          overlayToggleStats.textContent = 'Show stats';
+          statsVisible = false;
+          localStorage.setItem('vermillion-overlay-stats', '0');
+          pastePanel.classList.remove('expanded');
+          pasteToggle.textContent = 'Paste ▼';
+          pasteExpanded = false;
+          localStorage.setItem('vermillion-overlay-paste-expanded', '0');
+        });
+
+        var overlayStatusChart = null;
+        document.getElementById('overlayStatusReportBtn').addEventListener('click', function () {
+          if (!overlayReplayData) {
+            overlayError.textContent = 'Add turns first to see status report.';
+            overlayError.classList.remove('hidden');
+            setTimeout(function () { overlayError.classList.add('hidden'); }, 2000);
+            return;
+          }
+          replayData = overlayReplayData;
+          var series = buildSeries();
+          if (!series || !series.labels.length) return;
+          var chartIndices = [];
+          for (var fi = 0; fi < series.labels.length; fi++) {
+            if (series.labels[fi].indexOf('start') === -1) chartIndices.push(fi);
+          }
+          function filt(arr) { return chartIndices.map(function (idx) { return arr[idx]; }); }
+          var chartLabels = chartIndices.map(function (i) { return series.labels[i]; });
+          var p1 = overlayReplayData.playerNames[0];
+          var p2 = overlayReplayData.playerNames[1];
+          var pb1 = overlayReplayData.phoenixborn[p1];
+          var pb2 = overlayReplayData.phoenixborn[p2];
+          var totalAdv = filt(series.totalAdvantage);
+          var rightMax = 5;
+          for (var tai = 0; tai < totalAdv.length; tai++) {
+            rightMax = Math.max(rightMax, Math.abs(totalAdv[tai]));
+          }
+          var p2Bars = totalAdv.map(function (v) { return v < 0 ? [v, 0] : [0, 0]; });
+          var p1Bars = totalAdv.map(function (v) { return v > 0 ? [0, v] : [0, 0]; });
+          var swingHighlights = [];
+          for (var shi = 0; shi < totalAdv.length; shi++) {
+            var prevAdv = shi > 0 ? (totalAdv[shi - 1] || 0) : (totalAdv[shi] || 0);
+            var currAdv = totalAdv[shi] || 0;
+            if (Math.abs(currAdv - prevAdv) > 2) swingHighlights.push(shi);
+          }
+          var hypeHighlightPlugin = {
+            id: 'hypeHighlight',
+            beforeDraw: function (chart) {
+              if (!swingHighlights.length) return;
+              var ctx = chart.ctx;
+              var xScale = chart.scales.x;
+              var yTop = chart.chartArea.top;
+              var yBottom = chart.chartArea.bottom;
+              var barW = xScale.getPixelForValue(1) - xScale.getPixelForValue(0);
+              ctx.save();
+              ctx.fillStyle = 'rgba(201, 162, 39, 0.25)';
+              for (var si = 0; si < swingHighlights.length; si++) {
+                var idx = swingHighlights[si];
+                var x1 = xScale.getPixelForValue(idx) - barW / 2;
+                var x2 = xScale.getPixelForValue(idx) + barW / 2;
+                ctx.fillRect(x1, yTop, x2 - x1, yBottom - yTop);
+              }
+              ctx.restore();
+            }
+          };
+          if (overlayStatusChart) overlayStatusChart.destroy();
+          overlayStatusChart = new Chart(document.getElementById('overlayStatusChart'), {
+            type: 'bar',
+            data: {
+              labels: chartLabels,
+              datasets: [
+                { label: pb1 + ' health', type: 'line', data: filt(series.health1),
+                  borderColor: '#0d9488', backgroundColor: 'rgba(13,148,136,0.2)',
+                  fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1 },
+                { label: pb2 + ' health', type: 'line', data: filt(series.health2),
+                  borderColor: '#b45309', backgroundColor: 'rgba(180,83,9,0.2)',
+                  fill: false, tension: 0.2, pointRadius: 3, yAxisID: 'yLeft', order: 1 },
+                { label: 'Total resource (' + pb2 + ')', data: p2Bars,
+                  backgroundColor: 'rgba(180,83,9,0.85)', borderColor: '#b45309',
+                  borderWidth: 1, yAxisID: 'yRight', order: 4 },
+                { label: 'Total resource (' + pb1 + ')', data: p1Bars,
+                  backgroundColor: 'rgba(13,148,136,0.85)', borderColor: '#0d9488',
+                  borderWidth: 1, yAxisID: 'yRight', order: 3 }
+              ]
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: {
+                x: { grid: { color: 'rgba(55,65,81,0.25)' }, ticks: { color: '#6b7280', maxRotation: 45 } },
+                yLeft: { type: 'linear', position: 'left', min: 0,
+                  grid: { color: 'rgba(55,65,81,0.25)' }, ticks: { color: '#6b7280' },
+                  title: { display: true, text: 'Health', color: '#6b7280' } },
+                yRight: { type: 'linear', position: 'right', min: -rightMax, max: rightMax,
+                  grid: { drawOnChartArea: false }, ticks: { color: '#6b7280' },
+                  title: { display: true, text: 'Total resource advantage', color: '#6b7280' } }
+              }
+            },
+            plugins: [hypeHighlightPlugin]
           });
+          document.getElementById('overlayStatusModal').classList.add('visible');
+        });
+
+        var statusModal = document.getElementById('overlayStatusModal');
+        document.getElementById('overlayStatusClose').addEventListener('click', function () {
+          statusModal.classList.remove('visible');
+        });
+        statusModal.addEventListener('click', function (e) {
+          if (e.target === statusModal) statusModal.classList.remove('visible');
+        });
+
+        document.getElementById('overlayAddTurnsBtn').addEventListener('click', function () {
+          var text = overlayChatInput.value.trim();
+          if (!text) {
+            overlayError.textContent = 'Paste turns first.';
+            overlayError.classList.remove('hidden');
+            setTimeout(function () { overlayError.classList.add('hidden'); }, 2000);
+            return;
+          }
+          accumulatedChatBuffer += (accumulatedChatBuffer ? '\n' : '') + text;
+          overlayChatInput.value = '';
+          var normalized = parseChatLog(accumulatedChatBuffer);
+          if (!normalized) {
+            overlayError.textContent = 'Could not parse. Need "X brings Y to battle" and turns.';
+            overlayError.classList.remove('hidden');
+            setTimeout(function () { overlayError.classList.add('hidden'); }, 3000);
+            return;
+          }
+          if (!normalized.snapshots.length) {
+            overlayError.textContent = 'No turns found yet.';
+            overlayError.classList.remove('hidden');
+            setTimeout(function () { overlayError.classList.add('hidden'); }, 2000);
+            return;
+          }
+          overlayReplayData = normalized;
+          updateOverlayDisplay(true);
+          pastePanel.classList.remove('expanded');
+          pasteToggle.textContent = 'Paste ▼';
+          pasteExpanded = false;
+          localStorage.setItem('vermillion-overlay-paste-expanded', '0');
+        });
       }
     });
   </script>
