@@ -522,6 +522,14 @@
         'Ice Buff': 0.5, 'ice buff': 0.5
       };
 
+      // Dice type abbreviations (for parsing chat lines that use short forms)
+      // Pattern: type, type+power, type+class, type+basic for each (charm=h, nature=n, illusion=i, ceremonial=c, time=t, sympathy=s, divine=d, artifice=r, astral=a)
+      var DICE_ABBREV_PATTERN = /(?:die|\b(hp|hc|hb|np|nc|nb|ip|ic|ib|cp|cc|cb|tp|tc|tb|sp|sc|sb|dp|dc|db|rp|rc|rb|ap|ac|ab|h|n|i|c|t|s|d|r|a)\b)/i;
+
+      function isDicePrefix(str) {
+        return str && DICE_ABBREV_PATTERN.test(str);
+      }
+
       // Phoenixborn name -> starting life (middle stat: attack / life / spellboard)
       var PHOENIXBORN_LIFE = {
         'Aradel Summergaard': 16, 'Arren Frostpeak': 15, 'Astrea': 19, 'Brennen Blackcloud': 16,
@@ -876,7 +884,7 @@
 
           // Dice spending: Pattern A - dice cost prefix
           var diceCostMatch = line.match(/^(.+?)\s*:\s*(\S+)\s+(?:plays|uses)\s/);
-          if (diceCostMatch && /die/.test(diceCostMatch[1])) {
+          if (diceCostMatch && isDicePrefix(diceCostMatch[1])) {
             var spender = diceCostMatch[2];
             var diceCount = diceCostMatch[1].split(',').length;
             if (diceSpent[spender] != null) {
@@ -903,7 +911,7 @@
                 altDiceCost = pendingDiceCost;
               } else {
                 var prevLine = lines[i - 1];
-                if (prevLine && prevLine.length < 60 && !/plays|brings|to battle|Round|Turn|attacks|receives|takes|damage|destroyed/.test(prevLine) && /power|class|basic|die|nature|divine|ceremonial|sympathy|charm|time|illusion|natural/i.test(prevLine)) {
+                if (prevLine && prevLine.length < 60 && !/plays|brings|to battle|Round|Turn|attacks|receives|takes|damage|destroyed/.test(prevLine) && (/power|class|basic|die|nature|divine|ceremonial|sympathy|charm|time|illusion|natural/i.test(prevLine) || DICE_ABBREV_PATTERN.test(prevLine))) {
                   altDiceCost = Math.max(1, prevLine.split(',').length);
                 } else {
                   altDiceCost = 1;
@@ -913,7 +921,7 @@
             } else {
               altDiceCost = 1;
             }
-            if (!(diceCostMatch && /die/.test(diceCostMatch[1]))) {
+            if (!(diceCostMatch && isDicePrefix(diceCostMatch[1]))) {
               if (diceSpent[altPlayer] != null) diceSpent[altPlayer] += altDiceCost;
             }
             pendingDiceCost = 0;
@@ -1002,11 +1010,13 @@
             }
           }
 
-          // Dice spending: Pattern B - inline die use
+          // Dice spending: Pattern B - inline die use (full: "time power die" or abbrev: "hp", "t")
           var inlineDieMatch = line.match(/^(\S+)\s+uses\s+(\w+)\s+(basic|class|power)\s+die\s+to\s/);
-          if (inlineDieMatch) {
-            var spender2 = inlineDieMatch[1];
-            var dieType = inlineDieMatch[2] + ' ' + inlineDieMatch[3]; // e.g. "time power"
+          var inlineDieAbbrevMatch = !inlineDieMatch && line.match(/^(\S+)\s+uses\s+(hp|hc|hb|np|nc|nb|ip|ic|ib|cp|cc|cb|tp|tc|tb|sp|sc|sb|dp|dc|db|rp|rc|rb|ap|ac|ab|h|n|i|c|t|s|d|r|a)\s+(?:die\s+)?to\s/);
+          if (inlineDieMatch || inlineDieAbbrevMatch) {
+            var m = inlineDieMatch || inlineDieAbbrevMatch;
+            var spender2 = m[1];
+            var dieType = inlineDieMatch ? (inlineDieMatch[2] + ' ' + inlineDieMatch[3]) : m[2]; // e.g. "time power" or "hp"
             var inlineKey = spender2 + ':' + dieType;
             if (inlineKey === lastInlineDieKey) {
               // Same die used for multiple actions (e.g. place + remove status token) — count once
