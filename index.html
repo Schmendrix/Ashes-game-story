@@ -349,11 +349,79 @@
     .export-btn:hover {
       background: var(--accent-muted);
     }
+    .chart-explainer {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      margin-bottom: 1rem;
+    }
+    .chart-explainer summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--charcoal);
+      user-select: none;
+    }
+    .chart-explainer summary:hover {
+      color: var(--accent);
+    }
+    .explainer-content {
+      margin-top: 1rem;
+      font-size: 0.92rem;
+      line-height: 1.6;
+      color: var(--charcoal);
+    }
+    .explainer-content h3 {
+      font-size: 1rem;
+      margin: 1rem 0 0.5rem;
+      color: var(--text);
+    }
+    .explainer-content h3:first-child {
+      margin-top: 0;
+    }
+    .explainer-content ul {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+    .explainer-content li {
+      margin-bottom: 0.25rem;
+    }
   </style>
 </head>
 <body>
   <h1>Vermillion: Ashes Game Report</h1>
   <p class="subtitle">Paste a game chat log to visualize health, dice advantage, and attacks turn by turn. Phoenixborn starting life uses the standard card values (health = middle stat).</p>
+
+  <details class="chart-explainer">
+    <summary>How to read the charts</summary>
+    <div class="explainer-content">
+      <p><strong>The chart tracks your game turn by turn.</strong> Each column is one turn pair (both players acted). The horizontal axis shows rounds and turns—for example, R1.3 means Round 1, Turn 3.</p>
+
+      <h3>Chart layers</h3>
+      <p><strong>Health</strong> — Your Phoenixborn’s current life total. Lines go down as damage is dealt. The first player (teal) and second player (amber) are shown separately.</p>
+      <p><strong>Total resource advantage</strong> — Combines unspent dice and battlefield value into one number. Positive means the first player is ahead; negative means the second player is ahead. This is the main measure of who has more resources.</p>
+      <p><strong>Dice advantage</strong> — Who has more unspent dice. Each player gets 10 dice per round; this shows the difference. Positive = first player has more; negative = second player has more.</p>
+      <p><strong>Battlefield value</strong> — How many dice worth of units you have in play. A 2-dice unit counts as 2. Alterations attached to units add to this value. Destroying an opponent’s unit reduces their value.</p>
+      <p><strong>Attacks</strong> — How many units attacked that turn. Bar color shows which player attacked.</p>
+
+      <h3>Colored strip at the bottom</h3>
+      <p>This strip describes the strategic situation each turn:</p>
+      <ul>
+        <li><strong>Dominant Position</strong> — You lead in both dice and battlefield value.</li>
+        <li><strong>Committed Advantage</strong> — You lead on the battlefield but dice are even; your advantage is already invested in units.</li>
+        <li><strong>Unrealized Advantage</strong> — You lead in dice but the battlefield is even; you have room to spend.</li>
+        <li><strong>Comfortable Parity</strong> — Resources are even; health differences may favor one side.</li>
+        <li><strong>Parity</strong> — Both sides are even.</li>
+        <li><strong>Split</strong> — One player leads on the battlefield, the other in dice; neither has a clear edge.</li>
+      </ul>
+      <p>“With Compensation” means the leading player is behind by 6 or more life, so the advantage is partly offset.</p>
+
+      <h3>Gold highlights</h3>
+      <p>Turns where total resource advantage swung by 2 or more are highlighted in gold. These are often important turning points.</p>
+
+      <p><strong>Tip:</strong> Click a turn on the chart to see the chat log for that turn in the side panel.</p>
+    </div>
+  </details>
 
   <div id="panel-chat" class="input-panel">
     <label for="chatInput" class="chat-label">Paste your game chat here (Ctrl+V or Cmd+V):</label>
@@ -430,6 +498,7 @@
 
       // Unit name -> dice cost override (for units that enter under special conditions)
       var UNIT_DICE_COST = {
+        'Reborn Chimera': 3, 'reborn chimera': 3,
         'Raptor Herder': 0.5, 'Raptor hatchling': 0.5, 'Raptor Hatchling': 0.5,
         'Pterra Herder': 0.5, 'Pterra hatchling': 0.5, 'Pterra Hatchling': 0.5,
         'Hand of Spear': 1, 'Hand of Shield': 1,
@@ -441,6 +510,14 @@
         'Ancestral Army': 1,
         'Ancestor Spirit': 1,
         'Salamander Monk Spirit': 0.5
+      };
+
+      // Alteration name -> dice value override (attached to unit; Fade Away attaches to opponent's unit)
+      var ALTERATION_DICE_COST = {
+        'Fade Away': -1, 'fade away': -1,
+        'Playtime': -1, 'playtime': -1,
+        'Spark': 1, 'spark': 1,
+        'Ice Buff': 0.5, 'ice buff': 0.5
       };
 
       // Phoenixborn name -> starting life (middle stat: attack / life / spellboard)
@@ -463,8 +540,16 @@
         errorBox.classList.add('hidden');
       }
 
+      // Strip mirror-match suffix "(1)" or "(2)" for health lookup (e.g. "Rowan Umberend (1)" -> "Rowan Umberend")
+      function getPhoenixbornBaseName(pbName) {
+        if (!pbName || typeof pbName !== 'string') return pbName;
+        return pbName.replace(/\s*\(\d+\)\s*$/, '').trim();
+      }
+
       function getPhoenixbornLife(pbName) {
         if (PHOENIXBORN_LIFE[pbName] != null) return PHOENIXBORN_LIFE[pbName];
+        var base = getPhoenixbornBaseName(pbName);
+        if (PHOENIXBORN_LIFE[base] != null) return PHOENIXBORN_LIFE[base];
         return 20;
       }
 
@@ -536,7 +621,10 @@
             var bf = battlefield[p];
             var bfUnits = Object.keys(bf).length;
             var bfValue = 0;
-            for (var bk in bf) { bfValue += bf[bk].cost; }
+            for (var bk in bf) {
+              var u = bf[bk];
+              bfValue += (u.cost || 0) + (u.alterationCost || 0);
+            }
             state.players[p] = {
               id: idx,
               name: p,
@@ -676,6 +764,28 @@
               break;
             }
           }
+          // Pattern A2b: "X plays Y to deal N damage to opponent's unit or phoenixborn" — target is dealer's opponent
+          var oppDealMatch = line.match(/(?:^[^:]*:\s*)?(\S+)\s+(?:uses|plays)\s+(.+?)\s+to\s+deal\s+(\d+)\s+damage\s+to\s+(?:opponent'?s?|oppponent'?s?)\s+unit\s+or\s+phoenixborn/i);
+          if (oppDealMatch && !/prevent(?:ed)?/i.test(line)) {
+            var dealerName = oppDealMatch[1];
+            var spellName = oppDealMatch[2].trim();
+            var oppDealAmt = parseInt(oppDealMatch[3], 10);
+            var dealerIdx = playerNames.indexOf(dealerName);
+            if (dealerIdx >= 0) {
+              var damagedPlayer = playerNames[dealerIdx === 0 ? 1 : 0];
+              var applyToPhoenixborn = true;
+              if (/Sympathy Pain/i.test(spellName)) {
+                var nextLine = i + 1 < lines.length ? lines[i + 1] : '';
+                if (/^.+?\s+\(\d+\)\s+(?:is destroyed|is removed from play|leaves play)/.test(nextLine)) {
+                  applyToPhoenixborn = false;
+                }
+              }
+              if (applyToPhoenixborn) {
+                health[damagedPlayer] = Math.max(0, health[damagedPlayer] - oppDealAmt);
+                if (stats[dealerName]) stats[dealerName].totalDamageDealt += oppDealAmt;
+              }
+            }
+          }
           // Pattern B: "Player adds a damage to PBName" (manual mode)
           for (var j2 = 0; j2 < Object.keys(pbToPlayer).length; j2++) {
             var pbName2 = Object.keys(pbToPlayer)[j2];
@@ -760,6 +870,121 @@
             pendingDicePlayer = spender;
           }
 
+          // Alteration spells: "Player plays X attaching it to UnitName (N)" — add dice value to attached unit
+          var alterationMatch = line.match(/(?:^(.+?)\s*:\s*)?(\S+)\s+plays\s+(.+?)\s+attaching it to\s+(.+?)\s+\((\d+)\)/);
+          if (alterationMatch) {
+            var altPrefix = alterationMatch[1];
+            var altPlayer = alterationMatch[2];
+            var altName = alterationMatch[3].trim();
+            var altUnitId = alterationMatch[5];
+            var altDiceCost = 0;
+            var altBfValue = ALTERATION_DICE_COST[altName] != null ? ALTERATION_DICE_COST[altName] : null;
+            if (altBfValue == null) {
+              if (altPrefix && altPrefix.trim()) {
+                altDiceCost = Math.max(1, altPrefix.split(',').length);
+              } else if (i > 0 && altPlayer === pendingDicePlayer && pendingDiceCost > 0) {
+                altDiceCost = pendingDiceCost;
+              } else {
+                var prevLine = lines[i - 1];
+                if (prevLine && prevLine.length < 60 && !/plays|brings|to battle|Round|Turn|attacks|receives|takes|damage|destroyed/.test(prevLine) && /power|class|basic|die|nature|divine|ceremonial|sympathy|charm|time|illusion|natural/i.test(prevLine)) {
+                  altDiceCost = Math.max(1, prevLine.split(',').length);
+                } else {
+                  altDiceCost = 1;
+                }
+              }
+              altBfValue = altDiceCost;
+            } else {
+              altDiceCost = 1;
+            }
+            if (!(diceCostMatch && /die/.test(diceCostMatch[1]))) {
+              if (diceSpent[altPlayer] != null) diceSpent[altPlayer] += altDiceCost;
+            }
+            pendingDiceCost = 0;
+            pendingDicePlayer = null;
+            var unitOwner = altBfValue < 0 ? (altPlayer === p1 ? p2 : p1) : altPlayer;
+            var altBf = battlefield[unitOwner];
+            if (altBf && altBf[altUnitId]) {
+              var u = altBf[altUnitId];
+              u.alterationCost = (u.alterationCost || 0) + altBfValue;
+              u.alterations = u.alterations || [];
+              u.alterations.push({ name: altName, cost: altBfValue });
+            }
+          }
+
+          // Ability-based attachment: "X uses Rin Northfell to attach Ice Buff to UnitName (N)" — 0 dice
+          var rinAttachMatch = line.match(/^(\S+)\s+uses\s+Rin Northfell(?:\s+\(\d+\))?\s+to attach\s+(.+?)\s+to\s+(.+?)\s+\((\d+)\)/i);
+          if (rinAttachMatch) {
+            var rinPlayer = rinAttachMatch[1];
+            var rinAltName = rinAttachMatch[2].trim();
+            var rinUnitId = rinAttachMatch[4];
+            var rinCost = ALTERATION_DICE_COST[rinAltName] != null ? ALTERATION_DICE_COST[rinAltName] : 0;
+            var rinBf = battlefield[rinPlayer];
+            if (rinBf && rinBf[rinUnitId] && rinCost !== 0) {
+              var u = rinBf[rinUnitId];
+              u.alterationCost = (u.alterationCost || 0) + rinCost;
+              u.alterations = u.alterations || [];
+              u.alterations.push({ name: rinAltName, cost: rinCost });
+            }
+          }
+
+          // Generic attachment: "X attaches Y to UnitName (N)" — ability-based, 0 dice (e.g. Rin, or confirmation line)
+          var attachMatch = line.match(/^(\S+)\s+attaches\s+(.+?)\s+to\s+(.+?)\s+\((\d+)\)/);
+          if (attachMatch) {
+            var attachPlayer = attachMatch[1];
+            var attachAltName = attachMatch[2].trim();
+            var attachUnitId = attachMatch[4];
+            var attachCost = ALTERATION_DICE_COST[attachAltName] != null ? ALTERATION_DICE_COST[attachAltName] : 0;
+            var attachBf = battlefield[attachPlayer];
+            if (attachBf && attachBf[attachUnitId]) {
+              var u = attachBf[attachUnitId];
+              var alreadyHas = (u.alterations || []).some(function (a) { return a.name === attachAltName; });
+              if (!alreadyHas && attachCost !== 0) {
+                u.alterationCost = (u.alterationCost || 0) + attachCost;
+                u.alterations = u.alterations || [];
+                u.alterations.push({ name: attachAltName, cost: attachCost });
+              }
+            }
+          }
+
+          // Alteration discarded/removed: "discard X from Y (N)", "removes X from Y (N)", "uses A to discard/remove X"
+          var discardFromMatch = line.match(/(?:discard|removes?)\s+(.+?)\s+from\s+(.+?)\s+\((\d+)\)/i) ||
+            line.match(/uses\s+.+?\s+to\s+(?:discard|remove)\s+(.+?)(?:\s+from\s+(.+?)\s+\((\d+)\))?$/i);
+          if (discardFromMatch) {
+            var discAltName = discardFromMatch[1].trim();
+            var discUnitId = discardFromMatch[3];
+            function removeAlterationFromUnit(bf, uid, altName) {
+              var u = bf && bf[uid];
+              if (!u || !u.alterations) return;
+              for (var ai = 0; ai < u.alterations.length; ai++) {
+                if (u.alterations[ai].name === altName) {
+                  var c = u.alterations[ai].cost;
+                  u.alterationCost = (u.alterationCost || 0) - c;
+                  u.alterations.splice(ai, 1);
+                  return;
+                }
+              }
+            }
+            if (discUnitId) {
+              if (battlefield[p1][discUnitId]) removeAlterationFromUnit(battlefield[p1], discUnitId, discAltName);
+              else if (battlefield[p2][discUnitId]) removeAlterationFromUnit(battlefield[p2], discUnitId, discAltName);
+            } else {
+              searchUnit: for (var dp = 0; dp < playerNames.length; dp++) {
+                var p = playerNames[dp];
+                var bf = battlefield[p];
+                for (var uid in bf) {
+                  if (bf[uid].alterations) {
+                    for (var ai = 0; ai < bf[uid].alterations.length; ai++) {
+                      if (bf[uid].alterations[ai].name === discAltName) {
+                        removeAlterationFromUnit(bf, uid, discAltName);
+                        break searchUnit;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
           // Dice spending: Pattern B - inline die use
           var inlineDieMatch = line.match(/^(\S+)\s+uses\s+(\w+)\s+(basic|class|power)\s+die\s+to\s/);
           if (inlineDieMatch) {
@@ -792,12 +1017,18 @@
           var entersMatch = line.match(/^(\S+)\s+puts\s+(.+?)\s+\((\d+)\)\s+into play/);
           if (entersMatch) {
             var owner = entersMatch[1];
-            var unitName = entersMatch[2];
+            var unitName = (entersMatch[2] || '').trim();
             var unitId = entersMatch[3];
             if (battlefield[owner]) {
-              var cost = UNIT_DICE_COST[unitName] != null ? UNIT_DICE_COST[unitName]
+              var costOverride = UNIT_DICE_COST[unitName];
+              if (costOverride == null) {
+                for (var uk in UNIT_DICE_COST) {
+                  if (uk.toLowerCase() === unitName.toLowerCase()) { costOverride = UNIT_DICE_COST[uk]; break; }
+                }
+              }
+              var cost = costOverride != null ? costOverride
                 : (owner === pendingDicePlayer && pendingDiceCost > 0 ? pendingDiceCost : 0);
-              battlefield[owner][unitId] = { name: unitName, cost: cost };
+              battlefield[owner][unitId] = { name: unitName, cost: cost, alterationCost: 0, alterations: [] };
               pendingDiceCost = 0;
               pendingDicePlayer = null;
             }
@@ -841,7 +1072,7 @@
               }
               if (foundId) {
                 var manualCost = UNIT_DICE_COST[manualName] != null ? UNIT_DICE_COST[manualName] : 0;
-                battlefield[manualOwner][foundId] = { name: manualName, cost: manualCost };
+                battlefield[manualOwner][foundId] = { name: manualName, cost: manualCost, alterationCost: 0, alterations: [] };
               }
             }
           }
