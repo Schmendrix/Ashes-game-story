@@ -340,10 +340,19 @@
     }
     .stats-table .p1-col { color: var(--p1); }
     .stats-table .p2-col { color: var(--p2); }
-    .stats-table tr.dmg-dice-row td { font-weight: 600; border-bottom: 2px solid var(--border); }
-    .stats-table tr.dmg-dice-row .stat-label { font-weight: 700; color: var(--text); }
+    .stats-table tr.dmg-dice-row td,
+    .stats-table tr.stat-row-bold td { font-weight: 600; border-bottom: 2px solid var(--border); }
+    .stats-table tr.dmg-dice-row .stat-label,
+    .stats-table tr.stat-row-bold .stat-label { font-weight: 700; color: var(--text); }
     .stats-table td.dmg-dice-lead-p1 { background: var(--p1-muted); }
     .stats-table td.dmg-dice-lead-p2 { background: var(--p2-muted); }
+    .stats-table tr.stat-group-header { cursor: pointer; }
+    .stats-table tr.stat-group-header:hover .stat-label { color: var(--text); }
+    .stats-table tr.stat-group-header .stat-chevron { display: inline-block; transition: transform 0.2s; margin-right: 0.35rem; font-size: 0.75em; color: var(--muted); }
+    .stats-table tr.stat-group-header.expanded .stat-chevron { transform: rotate(90deg); }
+    .stats-table tr.stat-detail { display: none; }
+    .stats-table tr.stat-detail.visible { display: table-row; }
+    .stats-table tr.stat-detail .stat-label { padding-left: 1.5rem; font-weight: 400; }
     .export-row {
       margin-bottom: 1rem;
       display: flex;
@@ -720,6 +729,15 @@
         var pairTurnNum = 0;
         var pairPlayersGone = 0;
         var pairAttacks = []; // array of { player, count, units } for each attack in this pair
+        var pairDamageDealt = {};
+        pairDamageDealt[p1] = 0;
+        pairDamageDealt[p2] = 0;
+        var attackedThisTurn = {};
+        attackedThisTurn[p1] = false;
+        attackedThisTurn[p2] = false;
+        var fatigueDamageReceived = {};
+        fatigueDamageReceived[p1] = 0;
+        fatigueDamageReceived[p2] = 0;
         var pairChatLines = [];
         var snapshots = [];
         var gameResult = null;
@@ -734,8 +752,8 @@
 
         // Summary stat counters
         var stats = {};
-        stats[p1] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0 };
-        stats[p2] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0 };
+        stats[p1] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0, attackDamageDealt: 0 };
+        stats[p2] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0, attackDamageDealt: 0 };
 
         function makeState(attackPlayer, attackCount) {
           var state = { round: currentRound, players: {} };
@@ -788,23 +806,28 @@
             tag: 'turn',
             attackUnits: attackUnitsList.join(', '),
             pairAttacks: pairAttacks.slice(),
+            pairDamageDealt: { [p1]: pairDamageDealt[p1] || 0, [p2]: pairDamageDealt[p2] || 0 },
             chatLines: pairChatLines.slice()
           });
           pairAttacks = [];
+          pairDamageDealt[p1] = 0;
+          pairDamageDealt[p2] = 0;
           pairChatLines = [];
         }
 
         // Pass 2: parse events turn by turn
         for (var i = 0; i < lines.length; i++) {
           var line = lines[i];
-          var roundMatch = line.match(/^Round\s+(\d+)\s*$/);
-          var turnMatch = line.match(/^Turn\s+(\d+)\s+-\s+(\S+)\s*$/);
+          var roundMatch = line.match(/^Round\s+(\d+)\s*$/i);
+          var turnMatch = line.match(/^Turn\s+(\d+)\s+-\s+(\S+)\s*$/i);
           if (!roundMatch && !turnMatch) pairChatLines.push(line);
 
           // Round start
           if (roundMatch) {
             flushPair();
             lastInlineDieKey = null;
+            attackedThisTurn[p1] = false;
+            attackedThisTurn[p2] = false;
             // Accumulate dice spent this round into totals before resetting
             if (stats[p1]) stats[p1].totalDiceSpent += diceSpent[p1] || 0;
             if (stats[p2]) stats[p2].totalDiceSpent += diceSpent[p2] || 0;
@@ -837,6 +860,8 @@
               pairPlayersGone = 2;
               lastInlineDieKey = null;
             }
+            attackedThisTurn[p1] = false;
+            attackedThisTurn[p2] = false;
             currentTurnNum = newTurnNum;
             currentTurnPlayer = turnMatch[2];
             continue;
@@ -848,6 +873,7 @@
             var attacker = attackMatch[1];
             var count = parseInt(attackMatch[2], 10);
             if (playerNames.indexOf(attacker) !== -1) {
+              attackedThisTurn[attacker] = true;
               pairAttacks.push({
                 player: attacker,
                 count: count,
@@ -870,10 +896,16 @@
             if (damageMatch) {
               var amount = parseInt(damageMatch[1], 10);
               var damagedPlayer = pbToPlayer[pbName];
+              var isFatigue = /fatigue/i.test(line);
+              if (isFatigue) fatigueDamageReceived[damagedPlayer] = (fatigueDamageReceived[damagedPlayer] || 0) + amount;
               health[damagedPlayer] = Math.max(0, health[damagedPlayer] - amount);
               // Track damage dealt to this player (by the opponent)
               var attacker = damagedPlayer === p1 ? p2 : p1;
-              if (stats[attacker]) stats[attacker].totalDamageDealt += amount;
+              if (stats[attacker]) {
+                stats[attacker].totalDamageDealt += amount;
+                if (attackedThisTurn[attacker]) stats[attacker].attackDamageDealt += amount;
+              }
+              pairDamageDealt[attacker] = (pairDamageDealt[attacker] || 0) + amount;
               break;
             }
           }
@@ -905,7 +937,11 @@
               var dealerMatch = line.match(/(?:^[^:]*:\s*)?(\S+)\s+(?:uses\s+.+?\s+to\s+|plays\s+.+?\s+to\s+)?deal\s+\d+\s+damage/);
               var dealer = dealerMatch ? playerNames.indexOf(dealerMatch[1]) : -1;
               var attacker1 = dealer >= 0 ? playerNames[dealer] : (damagedPlayer1 === p1 ? p2 : p1);
-              if (stats[attacker1]) stats[attacker1].totalDamageDealt += dealAmt;
+              if (stats[attacker1]) {
+                stats[attacker1].totalDamageDealt += dealAmt;
+                if (attackedThisTurn[attacker1]) stats[attacker1].attackDamageDealt += dealAmt;
+              }
+              pairDamageDealt[attacker1] = (pairDamageDealt[attacker1] || 0) + dealAmt;
               break;
             }
           }
@@ -927,7 +963,11 @@
               }
               if (applyToPhoenixborn) {
                 health[damagedPlayer] = Math.max(0, health[damagedPlayer] - oppDealAmt);
-                if (stats[dealerName]) stats[dealerName].totalDamageDealt += oppDealAmt;
+                if (stats[dealerName]) {
+                  stats[dealerName].totalDamageDealt += oppDealAmt;
+                  if (attackedThisTurn[dealerName]) stats[dealerName].attackDamageDealt += oppDealAmt;
+                }
+                pairDamageDealt[dealerName] = (pairDamageDealt[dealerName] || 0) + oppDealAmt;
               }
             }
           }
@@ -943,7 +983,11 @@
               var damagedPlayer2 = pbToPlayer[pbName2];
               health[damagedPlayer2] = Math.max(0, health[damagedPlayer2] - manualAmt);
               var attacker2 = damagedPlayer2 === p1 ? p2 : p1;
-              if (stats[attacker2]) stats[attacker2].totalDamageDealt += manualAmt;
+              if (stats[attacker2]) {
+                stats[attacker2].totalDamageDealt += manualAmt;
+                if (attackedThisTurn[attacker2]) stats[attacker2].attackDamageDealt += manualAmt;
+              }
+              pairDamageDealt[attacker2] = (pairDamageDealt[attacker2] || 0) + manualAmt;
               break;
             }
           }
@@ -958,16 +1002,20 @@
                 health[destroyedPlayer] = 0;
                 // Attribute untracked damage to opponent
                 var opp = destroyedPlayer === p1 ? p2 : p1;
-                if (stats[opp]) stats[opp].totalDamageDealt += remaining;
+                if (stats[opp]) {
+                  stats[opp].totalDamageDealt += remaining;
+                  if (attackedThisTurn[opp]) stats[opp].attackDamageDealt += remaining;
+                }
+                pairDamageDealt[opp] = (pairDamageDealt[opp] || 0) + remaining;
               }
               break;
             }
           }
-          // Pattern D: "remove(s) N wounds from PBName" / "X removes N wounds from PBName" (e.g. Generosity)
+          // Pattern D: "remove(s) N wound(s) [token(s)] from PBName" (e.g. Generosity, Channel Magic, Reclaim Soul)
           for (var j4 = 0; j4 < Object.keys(pbToPlayer).length; j4++) {
             var pbName4 = Object.keys(pbToPlayer)[j4];
             var escaped4 = pbName4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            var healMatch = line.match(new RegExp('removes?\\s+(\\d+)\\s+wounds?\\s+from\\s+' + escaped4, 'i'));
+            var healMatch = line.match(new RegExp('removes?\\s+(\\d+)\\s+wound(?:s)?\\s+(?:token(?:s)?\\s+)?from\\s+' + escaped4, 'i'));
             if (healMatch) {
               var healAmt = parseInt(healMatch[1], 10);
               var healedPlayer = pbToPlayer[pbName4];
@@ -1003,15 +1051,35 @@
             break;
           }
 
-          // Dice spending: Pattern A - dice cost prefix
+          // Dice spending: Pattern A - dice cost prefix (same line or previous line(s))
           var diceCostMatch = line.match(/^(.+?)\s*:\s*(\S+)\s+(?:plays|uses)\s/);
-          if (diceCostMatch && isDicePrefix(diceCostMatch[1])) {
+          var dicePrefix = diceCostMatch && isDicePrefix(diceCostMatch[1]) ? diceCostMatch[1] : null;
+          var diceSpender = diceCostMatch ? diceCostMatch[2] : null;
+          if (!dicePrefix && line.match(/^\s*:\s*(\S+)\s+(?:plays|uses)\s/)) {
+            var colonMatch = line.match(/^\s*:\s*(\S+)\s+(?:plays|uses)\s/);
+            diceSpender = colonMatch[1];
+            var collected = [];
+            for (var di = i - 1; di >= 0; di--) {
+              var pl = lines[di];
+              if (isDicePrefix(pl)) {
+                collected.unshift(pl);
+              } else if (/^[\s,]+$/.test(pl) && di > 0 && isDicePrefix(lines[di - 1])) {
+                continue;
+              } else {
+                break;
+              }
+            }
+            if (collected.length > 0) {
+              dicePrefix = collected.join(',');
+              diceCostMatch = [null, dicePrefix, diceSpender];
+            }
+          }
+          if (dicePrefix && diceCostMatch) {
             var spender = diceCostMatch[2];
-            var diceCount = diceCostMatch[1].split(',').length;
+            var diceCount = dicePrefix.split(',').map(function (s) { return s.trim(); }).filter(Boolean).length || 1;
             if (diceSpent[spender] != null) {
               diceSpent[spender] += diceCount;
             }
-            // Track pending cost for battlefield
             pendingDiceCost = diceCount;
             pendingDicePlayer = spender;
           }
@@ -1182,8 +1250,8 @@
             }
           }
 
-          // Battlefield: unit destroyed or removed
-          var destroyedMatch = line.match(/^(.+?)\s+\((\d+)\)\s+(?:is destroyed|is removed from play|leaves play)/) ||
+          // Battlefield: unit destroyed, removed, discarded, or leaves
+          var destroyedMatch = line.match(/^(.+?)\s+\((\d+)\)\s+(?:is destroyed|is removed from play|is discarded|leaves play)/) ||
             line.match(/remove\s+(.+?)\s+\((\d+)\)\s+from the game/);
           if (destroyedMatch) {
             var deadId = destroyedMatch[2];
@@ -1238,7 +1306,8 @@
           playerNames: playerNames,
           phoenixborn: phoenixborn,
           gameResult: gameResult,
-          stats: stats
+          stats: stats,
+          fatigueDamageReceived: fatigueDamageReceived
         };
       }
 
@@ -1258,6 +1327,7 @@
         var bfValue2 = [];
         var bfValueAdv = [];
         var chatLines = [];
+        var pairDamageDealtArr = [];
         var pb1 = replayData.phoenixborn[p1];
         var pb2 = replayData.phoenixborn[p2];
 
@@ -1308,6 +1378,8 @@
             attackUnits.push('');
           }
           chatLines.push(s.chatLines || []);
+          var pd = s.pairDamageDealt || {};
+          pairDamageDealtArr.push({ [p1]: pd[p1] || 0, [p2]: pd[p2] || 0 });
         }
 
         // Compute single game situation per turn pair (no damage; health advantage for compensation/parity)
@@ -1377,6 +1449,15 @@
           totalAdvantage.push(diceAdv[ti] + bfValueAdv[ti]);
         }
 
+        // Damage dealt during turns when player was in control (favorable position)
+        var damageWhenInControl1 = 0, damageWhenInControl2 = 0;
+        for (var di = 0; di < situation.length; di++) {
+          var sit = situation[di];
+          var pd = pairDamageDealtArr[di] || {};
+          if (sit.player === pb1) damageWhenInControl1 += pd[p1] || 0;
+          else if (sit.player === pb2) damageWhenInControl2 += pd[p2] || 0;
+        }
+
         return {
           labels: labels,
           diceAdvantage: diceAdv,
@@ -1391,6 +1472,8 @@
           totalAdvantage: totalAdvantage,
           chatLines: chatLines,
           situation: situation,
+          damageWhenInControl1: damageWhenInControl1,
+          damageWhenInControl2: damageWhenInControl2,
           stateColors: stateColors,
           stateLabels: stateLabels
         };
@@ -1926,9 +2009,10 @@
         var finalH1 = series.health1[series.health1.length - 1] || 0;
         var finalH2 = series.health2[series.health2.length - 1] || 0;
 
-        function row(label, v1, v2, titleAttr) {
+        function row(label, v1, v2, titleAttr, bold) {
+          var trClass = bold ? ' class="stat-row-bold"' : '';
           var td = '<td class="stat-label"' + (titleAttr ? ' title="' + escapeHtml(titleAttr) + '"' : '') + '>' + escapeHtml(label) + '</td>';
-          return '<tr>' + td + '<td class="num p1-col">' + v1 + '</td><td class="num p2-col">' + v2 + '</td></tr>';
+          return '<tr' + trClass + '>' + td + '<td class="num p1-col">' + v1 + '</td><td class="num p2-col">' + v2 + '</td></tr>';
         }
 
         var d1 = s1.totalDiceSpent || 0;
@@ -1942,23 +2026,65 @@
         var lead1 = ratio1 != null && (ratio2 == null || ratio1 > ratio2);
         var lead2 = ratio2 != null && (ratio1 == null || ratio2 > ratio1);
 
-        var html = '<table class="stats-table">';
+        var totalDmg1 = s1.totalDamageDealt || 0;
+        var totalDmg2 = s2.totalDamageDealt || 0;
+        var dmgInCtrl1 = series.damageWhenInControl1 || 0;
+        var dmgInCtrl2 = series.damageWhenInControl2 || 0;
+        var pctInCtrl1 = totalDmg1 > 0 ? (dmgInCtrl1 / totalDmg1 * 100).toFixed(1) + '%' : '—';
+        var pctInCtrl2 = totalDmg2 > 0 ? (dmgInCtrl2 / totalDmg2 * 100).toFixed(1) + '%' : '—';
+
+        var attackDmg1 = s1.attackDamageDealt || 0;
+        var attackDmg2 = s2.attackDamageDealt || 0;
+        var pctFromAtk1 = totalDmg1 > 0 ? (attackDmg1 / totalDmg1 * 100).toFixed(1) + '%' : '—';
+        var pctFromAtk2 = totalDmg2 > 0 ? (attackDmg2 / totalDmg2 * 100).toFixed(1) + '%' : '—';
+
+        function groupHeader(groupId, label, v1, v2, titleAttr, lead1Cls, lead2Cls, extraClass) {
+          var cls = 'stat-group-header stat-row-bold' + (extraClass ? ' ' + extraClass : '');
+          var td = '<td class="stat-label" title="' + (titleAttr ? escapeHtml(titleAttr) : '') + '"><span class="stat-chevron">▶</span>' + escapeHtml(label) + '</td>';
+          return '<tr class="' + cls + '" data-group="' + groupId + '">' + td +
+            '<td class="num p1-col' + (lead1Cls || '') + '">' + v1 + '</td><td class="num p2-col' + (lead2Cls || '') + '">' + v2 + '</td></tr>';
+        }
+        function detailRow(groupId, label, v1, v2, titleAttr) {
+          var td = '<td class="stat-label"' + (titleAttr ? ' title="' + escapeHtml(titleAttr) + '"' : '') + '>' + escapeHtml(label) + '</td>';
+          return '<tr class="stat-detail" data-group="' + groupId + '">' + td + '<td class="num p1-col">' + v1 + '</td><td class="num p2-col">' + v2 + '</td></tr>';
+        }
+
+        var bloodPts1 = startH2 - finalH2;
+        var bloodPts2 = startH1 - finalH1;
+        var bloodLead1 = bloodPts1 > bloodPts2;
+        var bloodLead2 = bloodPts2 > bloodPts1;
+
+        var fatigueToP2 = replayData.fatigueDamageReceived && replayData.fatigueDamageReceived[p2] ? replayData.fatigueDamageReceived[p2] : 0;
+        var fatigueToP1 = replayData.fatigueDamageReceived && replayData.fatigueDamageReceived[p1] ? replayData.fatigueDamageReceived[p1] : 0;
+        var pctOppFatigue1 = bloodPts1 > 0 ? (fatigueToP2 / bloodPts1 * 100).toFixed(1) + '%' : '—';
+        var pctOppFatigue2 = bloodPts2 > 0 ? (fatigueToP1 / bloodPts2 * 100).toFixed(1) + '%' : '—';
+
+        var cards1 = s1.cardsPlayed || 0;
+        var cards2 = s2.cardsPlayed || 0;
+        var dmgHealPerCard1 = cards1 > 0 ? (impact1 / cards1).toFixed(2) : '—';
+        var dmgHealPerCard2 = cards2 > 0 ? (impact2 / cards2).toFixed(2) : '—';
+        var cardLead1 = cards1 > 0 && (cards2 === 0 || impact1 / cards1 > impact2 / cards2);
+        var cardLead2 = cards2 > 0 && (cards1 === 0 || impact2 / cards2 > impact1 / cards1);
+
+        var html = '<table class="stats-table" id="statsTable">';
         html += '<thead><tr><th></th><th class="p1-col">' + escapeHtml(pb1) + '</th><th class="p2-col">' + escapeHtml(pb2) + '</th></tr></thead>';
         html += '<tbody>';
-        html += '<tr class="dmg-dice-row"><td class="stat-label" title="(Damage dealt + healing) per die spent">Dmg+heal/dice</td>';
-        html += '<td class="num p1-col' + (lead1 ? ' dmg-dice-lead-p1' : '') + '">' + disp1 + '</td>';
-        html += '<td class="num p2-col' + (lead2 ? ' dmg-dice-lead-p2' : '') + '">' + disp2 + '</td></tr>';
-        html += row('Starting health', startH1, startH2);
-        html += row('Final health', finalH1, finalH2);
-        html += row('Damage dealt to PB', s1.totalDamageDealt, s2.totalDamageDealt, 'Gross damage (sum of all damage events, not net of healing)');
-        html += row('Healing', s1.totalHealing || 0, s2.totalHealing || 0, 'Wounds removed from own Phoenixborn');
-        html += row('Total attacks', s1.totalAttacks, s2.totalAttacks);
-        html += row('Total units attacking', s1.totalUnitsAttacking, s2.totalUnitsAttacking);
-        html += row('Cards played', s1.cardsPlayed, s2.cardsPlayed);
-        html += row('Cards meditated', s1.meditated, s2.meditated);
-        html += row('Dice spent', s1.totalDiceSpent, s2.totalDiceSpent);
-        html += row('Dice available (' + totalRounds + ' rounds)', totalRounds * 10, totalRounds * 10);
-        html += row('Turns in control', turnsInControl1, turnsInControl2);
+        html += groupHeader('blood', 'Blood points', bloodPts1, bloodPts2, 'Opponent starting health minus their final health', bloodLead1 ? ' dmg-dice-lead-p1' : '', bloodLead2 ? ' dmg-dice-lead-p2' : '', 'dmg-dice-row');
+        html += detailRow('blood', 'Opponent starting health', startH2, startH1);
+        html += detailRow('blood', 'Opponent final health', finalH2, finalH1);
+        html += detailRow('blood', '% damage in control', pctInCtrl1, pctInCtrl2, 'Share of your total damage dealt during turns when you were in control');
+        html += detailRow('blood', '% damage from attacking', pctFromAtk1, pctFromAtk2, 'Share of your total damage from unit attacks this turn');
+        html += detailRow('blood', '% opponent fatigue', pctOppFatigue1, pctOppFatigue2, 'Share of opponent\'s total damage taken that was from fatigue');
+
+        html += groupHeader('dmg-heal', 'Dmg+heal/dice', disp1, disp2, '(Damage dealt + healing) per die spent', lead1 ? ' dmg-dice-lead-p1' : '', lead2 ? ' dmg-dice-lead-p2' : '');
+        html += detailRow('dmg-heal', 'Damage dealt to PB', s1.totalDamageDealt, s2.totalDamageDealt, 'Gross damage (sum of all damage events)');
+        html += detailRow('dmg-heal', 'Healing', s1.totalHealing || 0, s2.totalHealing || 0, 'Wounds removed from own Phoenixborn');
+        html += detailRow('dmg-heal', 'Dice spent', s1.totalDiceSpent, s2.totalDiceSpent);
+
+        html += groupHeader('dmg-heal-card', 'Dmg+heal/card', dmgHealPerCard1, dmgHealPerCard2, '(Damage dealt + healing) per card played', cardLead1 ? ' dmg-dice-lead-p1' : '', cardLead2 ? ' dmg-dice-lead-p2' : '');
+        html += detailRow('dmg-heal-card', 'Cards played', s1.cardsPlayed, s2.cardsPlayed);
+        html += detailRow('dmg-heal-card', 'Cards meditated', s1.meditated, s2.meditated);
+
         if (turnsParity > 0) {
           html += '<tr><td class="stat-label">Turns at parity / contested</td><td class="num" colspan="2" style="text-align:center;color:var(--muted)">' + turnsParity + '</td></tr>';
         }
@@ -1966,6 +2092,20 @@
 
         content.innerHTML = html;
         section.classList.remove('hidden');
+
+        (function() {
+          var table = document.getElementById('statsTable');
+          if (!table) return;
+          table.querySelectorAll('.stat-group-header').forEach(function(header) {
+            header.addEventListener('click', function() {
+              var g = this.getAttribute('data-group');
+              var details = table.querySelectorAll('.stat-detail[data-group="' + g + '"]');
+              var isExp = this.classList.contains('expanded');
+              this.classList.toggle('expanded', !isExp);
+              details.forEach(function(d) { d.classList.toggle('visible', !isExp); });
+            });
+          });
+        })();
       }
 
       function renderNarrative() {
@@ -2086,6 +2226,8 @@
         var s1 = replayData.stats[p1] || {};
         var s2 = replayData.stats[p2] || {};
 
+        var startH1 = series.health1[0] || 0;
+        var startH2 = series.health2[0] || 0;
         var finalH1 = series.health1[series.health1.length - 1] || 0;
         var finalH2 = series.health2[series.health2.length - 1] || 0;
 
@@ -2127,7 +2269,7 @@
           while (str.length < w) str += ' ';
           return str;
         }
-        var colL = 20;
+        var colL = 22;
         var colN = 6;
         var dd1 = s1.totalDiceSpent || 0;
         var dd2 = s2.totalDiceSpent || 0;
@@ -2135,9 +2277,17 @@
         var imp2 = (s2.totalDamageDealt || 0) + (s2.totalHealing || 0);
         var r1 = dd1 > 0 ? (imp1 / dd1).toFixed(2) : '—';
         var r2 = dd2 > 0 ? (imp2 / dd2).toFixed(2) : '—';
+        var bloodPts1 = startH2 - finalH2;
+        var bloodPts2 = startH1 - finalH1;
+        var cards1 = s1.cardsPlayed || 0;
+        var cards2 = s2.cardsPlayed || 0;
+        var dmgHealCard1 = cards1 > 0 ? (imp1 / cards1).toFixed(2) : '—';
+        var dmgHealCard2 = cards2 > 0 ? (imp2 / cards2).toFixed(2) : '—';
         out += '```\n';
         out += pad('', colL) + pad(pb1, colN) + pad(pb2, colN) + '\n';
+        out += pad('Blood points', colL) + pad(bloodPts1, colN) + pad(bloodPts2, colN) + '\n';
         out += pad('Dmg+heal/dice', colL) + pad(r1, colN) + pad(r2, colN) + '\n';
+        out += pad('Dmg+heal/card', colL) + pad(dmgHealCard1, colN) + pad(dmgHealCard2, colN) + '\n';
         out += pad('Final health', colL) + pad(finalH1, colN) + pad(finalH2, colN) + '\n';
         out += pad('Damage dealt', colL) + pad(s1.totalDamageDealt || 0, colN) + pad(s2.totalDamageDealt || 0, colN) + '\n';
         out += pad('Healing', colL) + pad(s1.totalHealing || 0, colN) + pad(s2.totalHealing || 0, colN) + '\n';
