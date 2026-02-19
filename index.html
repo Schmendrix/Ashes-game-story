@@ -738,6 +738,7 @@
         var fatigueDamageReceived = {};
         fatigueDamageReceived[p1] = 0;
         fatigueDamageReceived[p2] = 0;
+        var pendingFatigueSnapshotRound = 0;
         var pairChatLines = [];
         var snapshots = [];
         var gameResult = null;
@@ -752,8 +753,40 @@
 
         // Summary stat counters
         var stats = {};
-        stats[p1] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0, attackDamageDealt: 0 };
-        stats[p2] = { cardsPlayed: 0, meditated: 0, totalDiceSpent: 0, totalAttacks: 0, totalUnitsAttacking: 0, totalDamageDealt: 0, totalHealing: 0, attackDamageDealt: 0 };
+        stats[p1] = {
+          cardsPlayed: 0,
+          meditated: 0,
+          totalDiceSpent: 0,
+          totalAttacks: 0,
+          totalUnitsAttacking: 0,
+          totalDamageDealt: 0,
+          totalHealing: 0,
+          attackDamageDealt: 0,
+          // Dice value of units and alterations played
+          unitDicePlayed: 0,
+          alterationDicePlayed: 0,
+          // Battlefield value carried between rounds
+          carryoverValue: 0,
+          // Dice value of own units removed (any cause)
+          ownUnitsRemovedTotalDice: 0,
+          // Dice value of own units removed during turns with opponent attacks
+          ownUnitsRemovedByAttackDice: 0
+        };
+        stats[p2] = {
+          cardsPlayed: 0,
+          meditated: 0,
+          totalDiceSpent: 0,
+          totalAttacks: 0,
+          totalUnitsAttacking: 0,
+          totalDamageDealt: 0,
+          totalHealing: 0,
+          attackDamageDealt: 0,
+          unitDicePlayed: 0,
+          alterationDicePlayed: 0,
+          carryoverValue: 0,
+          ownUnitsRemovedTotalDice: 0,
+          ownUnitsRemovedByAttackDice: 0
+        };
 
         function makeState(attackPlayer, attackCount) {
           var state = { round: currentRound, players: {} };
@@ -831,6 +864,21 @@
             // Accumulate dice spent this round into totals before resetting
             if (stats[p1]) stats[p1].totalDiceSpent += diceSpent[p1] || 0;
             if (stats[p2]) stats[p2].totalDiceSpent += diceSpent[p2] || 0;
+            // Battlefield value carried between rounds (carryover) — value of units that persist into the new round
+            if (currentRound > 0) {
+              [p1, p2].forEach(function (p) {
+                var bf = battlefield[p];
+                var carryVal = 0;
+                if (bf) {
+                  for (var uid in bf) {
+                    if (!Object.prototype.hasOwnProperty.call(bf, uid)) continue;
+                    var u = bf[uid];
+                    carryVal += (u.cost || 0) + (u.alterationCost || 0);
+                  }
+                }
+                if (stats[p]) stats[p].carryoverValue = (stats[p].carryoverValue || 0) + carryVal;
+              });
+            }
             currentRound = parseInt(roundMatch[1], 10);
             currentTurnPlayer = null;
             currentTurnNum = 0;
@@ -897,8 +945,14 @@
               var amount = parseInt(damageMatch[1], 10);
               var damagedPlayer = pbToPlayer[pbName];
               var isFatigue = /fatigue/i.test(line);
-              if (isFatigue) fatigueDamageReceived[damagedPlayer] = (fatigueDamageReceived[damagedPlayer] || 0) + amount;
+              if (isFatigue) {
+                fatigueDamageReceived[damagedPlayer] = (fatigueDamageReceived[damagedPlayer] || 0) + amount;
+              }
               health[damagedPlayer] = Math.max(0, health[damagedPlayer] - amount);
+              if (isFatigue && health[damagedPlayer] === 0 && !pendingFatigueSnapshotRound) {
+                // Mark that we should create an end-of-round fatigue snapshot for this round
+                pendingFatigueSnapshotRound = currentRound;
+              }
               // Track damage dealt to this player (by the opponent)
               var attacker = damagedPlayer === p1 ? p2 : p1;
               if (stats[attacker]) {
@@ -1026,6 +1080,19 @@
             }
           }
 
+          // Phoenix Attendant: hard-coded life shift to PB
+          // Matches either ": Schmendrix uses Phoenix Attendant (9)" or "Player uses Phoenix Attendant (X)"
+          var paMatch = line.match(/(?:^[^:]*:\s*)?(\S+)\s+uses\s+Phoenix Attendant\s*\(\d+\)/i);
+          if (paMatch) {
+            var paUser = paMatch[1];
+            if (playerNames.indexOf(paUser) !== -1) {
+              var healedPlayerPa = paUser;
+              var maxLifePa = healedPlayerPa === p1 ? life1 : life2;
+              health[healedPlayerPa] = Math.min(maxLifePa, (health[healedPlayerPa] || 0) + 1);
+              if (stats[healedPlayerPa]) stats[healedPlayerPa].totalHealing += 1;
+            }
+          }
+
           // Game end
           var concedeMatch = line.match(/^(\S+)\s+concedes\s*$/);
           if (concedeMatch) {
@@ -1037,6 +1104,16 @@
             gameResult = gameResult || { method: 'defeat', round: currentRound, turn: currentTurnNum };
             gameResult.winner = winMatch[1];
             gameResult.winnerPb = playerToPb[winMatch[1]] || winMatch[1];
+            // If lethal fatigue was detected, capture a dedicated fatigue snapshot
+            if (pendingFatigueSnapshotRound) {
+              snapshots.push({
+                state: makeState(null, 0),
+                turnLabel: 'R' + pendingFatigueSnapshotRound + '.fatigue',
+                tag: 'turn',
+                chatLines: pairChatLines.slice()
+              });
+              pendingFatigueSnapshotRound = 0;
+            }
             flushPair();
             // Accumulate final round's dice into totals
             if (stats[p1]) stats[p1].totalDiceSpent += diceSpent[p1] || 0;
@@ -1112,6 +1189,9 @@
             }
             if (!(diceCostMatch && isDicePrefix(diceCostMatch[1]))) {
               if (diceSpent[altPlayer] != null) diceSpent[altPlayer] += altDiceCost;
+            }
+            if (stats[altPlayer]) {
+              stats[altPlayer].alterationDicePlayed = (stats[altPlayer].alterationDicePlayed || 0) + Math.max(0, altDiceCost || 0);
             }
             pendingDiceCost = 0;
             pendingDicePlayer = null;
@@ -1245,6 +1325,9 @@
               var cost = costOverride != null ? costOverride
                 : (owner === pendingDicePlayer && pendingDiceCost > 0 ? pendingDiceCost : 0);
               battlefield[owner][unitId] = { name: unitName, cost: cost, alterationCost: 0, alterations: [] };
+              if (stats[owner]) {
+                stats[owner].unitDicePlayed = (stats[owner].unitDicePlayed || 0) + Math.max(0, cost || 0);
+              }
               pendingDiceCost = 0;
               pendingDicePlayer = null;
             }
@@ -1255,11 +1338,28 @@
             line.match(/remove\s+(.+?)\s+\((\d+)\)\s+from the game/);
           if (destroyedMatch) {
             var deadId = destroyedMatch[2];
-            // Find which player owns this unit
+            // Find which player owns this unit and record dice value removed
+            var ownerForDead = null;
             if (battlefield[p1][deadId]) {
-              delete battlefield[p1][deadId];
+              ownerForDead = p1;
             } else if (battlefield[p2][deadId]) {
-              delete battlefield[p2][deadId];
+              ownerForDead = p2;
+            }
+            if (ownerForDead) {
+              var uDead = battlefield[ownerForDead][deadId];
+              var unitValue = 0;
+              if (uDead) {
+                unitValue = ((uDead.cost || 0) + (uDead.alterationCost || 0)) || 0;
+              }
+              var oppPlayer = ownerForDead === p1 ? p2 : p1;
+              if (stats[ownerForDead]) {
+                var positiveVal = Math.max(0, unitValue);
+                stats[ownerForDead].ownUnitsRemovedTotalDice = (stats[ownerForDead].ownUnitsRemovedTotalDice || 0) + positiveVal;
+                if (attackedThisTurn[oppPlayer]) {
+                  stats[ownerForDead].ownUnitsRemovedByAttackDice = (stats[ownerForDead].ownUnitsRemovedByAttackDice || 0) + positiveVal;
+                }
+              }
+              delete battlefield[ownerForDead][deadId];
             }
           }
 
@@ -2038,6 +2138,31 @@
         var pctFromAtk1 = totalDmg1 > 0 ? (attackDmg1 / totalDmg1 * 100).toFixed(1) + '%' : '—';
         var pctFromAtk2 = totalDmg2 > 0 ? (attackDmg2 / totalDmg2 * 100).toFixed(1) + '%' : '—';
 
+        // Net carryover and unit dice stats
+        var carry1 = s1.carryoverValue || 0;
+        var carry2 = s2.carryoverValue || 0;
+        var netCarry1 = carry1 - carry2;
+        var netCarry2 = carry2 - carry1;
+        var carryLead1 = netCarry1 > netCarry2;
+        var carryLead2 = netCarry2 > netCarry1;
+
+        var unitsPlayed1 = (s1.unitDicePlayed || 0) + (s1.alterationDicePlayed || 0);
+        var unitsPlayed2 = (s2.unitDicePlayed || 0) + (s2.alterationDicePlayed || 0);
+        var oppUnitsPlayed1 = unitsPlayed2;
+        var oppUnitsPlayed2 = unitsPlayed1;
+
+        var ownRemovedTotal1 = s1.ownUnitsRemovedTotalDice || 0;
+        var ownRemovedTotal2 = s2.ownUnitsRemovedTotalDice || 0;
+        var ownRemovedAtk1 = s1.ownUnitsRemovedByAttackDice || 0;
+        var ownRemovedAtk2 = s2.ownUnitsRemovedByAttackDice || 0;
+        var ownRemovedSpell1 = Math.max(0, ownRemovedTotal1 - ownRemovedAtk1);
+        var ownRemovedSpell2 = Math.max(0, ownRemovedTotal2 - ownRemovedAtk2);
+
+        var oppRemovedAtk1 = ownRemovedAtk2;
+        var oppRemovedAtk2 = ownRemovedAtk1;
+        var oppRemovedSpell1 = ownRemovedSpell2;
+        var oppRemovedSpell2 = ownRemovedSpell1;
+
         function groupHeader(groupId, label, v1, v2, titleAttr, lead1Cls, lead2Cls, extraClass) {
           var cls = 'stat-group-header stat-row-bold' + (extraClass ? ' ' + extraClass : '');
           var td = '<td class="stat-label" title="' + (titleAttr ? escapeHtml(titleAttr) : '') + '"><span class="stat-chevron">▶</span>' + escapeHtml(label) + '</td>';
@@ -2075,6 +2200,22 @@
         html += detailRow('blood', '% damage in control', pctInCtrl1, pctInCtrl2, 'Share of your total damage dealt during turns when you were in control');
         html += detailRow('blood', '% damage from attacking', pctFromAtk1, pctFromAtk2, 'Share of your total damage from unit attacks this turn');
         html += detailRow('blood', '% opponent fatigue', pctOppFatigue1, pctOppFatigue2, 'Share of opponent\'s total damage taken that was from fatigue');
+
+        html += groupHeader(
+          'carry',
+          'Net carryover value',
+          netCarry1,
+          netCarry2,
+          'Total battlefield value carried between rounds (per column shows net vs opponent).',
+          carryLead1 ? ' dmg-dice-lead-p1' : '',
+          carryLead2 ? ' dmg-dice-lead-p2' : ''
+        );
+        html += detailRow('carry', 'Total dice value of units and alterations played', unitsPlayed1, unitsPlayed2);
+        html += detailRow('carry', 'Total dice value of units and alterations played by opponent', oppUnitsPlayed1, oppUnitsPlayed2);
+        html += detailRow('carry', 'Dice value of own units removed by attacks', ownRemovedAtk1, ownRemovedAtk2);
+        html += detailRow('carry', 'Dice value of own units removed by spells and abilities', ownRemovedSpell1, ownRemovedSpell2, 'Imputed as total dice value of own units removed minus those removed by attacks');
+        html += detailRow('carry', 'Dice value of opponent units removed by attacks', oppRemovedAtk1, oppRemovedAtk2);
+        html += detailRow('carry', 'Dice value of opponent units removed by spells and abilities', oppRemovedSpell1, oppRemovedSpell2);
 
         html += groupHeader('dmg-heal', 'Dmg+heal/dice', disp1, disp2, '(Damage dealt + healing) per die spent', lead1 ? ' dmg-dice-lead-p1' : '', lead2 ? ' dmg-dice-lead-p2' : '');
         html += detailRow('dmg-heal', 'Damage dealt to PB', s1.totalDamageDealt, s2.totalDamageDealt, 'Gross damage (sum of all damage events)');
@@ -2256,10 +2397,14 @@
         // Build Discord block
         var out = '';
 
+        function firstName(pb) {
+          var parts = (pb || '').trim().split(/\s+/);
+          return parts[0] || pb || '';
+        }
         if (replayData.gameResult) {
           var r = replayData.gameResult;
           var winner = r.winnerPb || r.winner;
-          out += '**' + winner + '** wins Round ' + r.round + ', Turn ' + r.turn;
+          out += '**' + firstName(winner) + '** wins Round ' + r.round + ', Turn ' + r.turn;
           if (r.method === 'concession') out += ' by concession';
           out += '.\n\n';
         }
@@ -2271,6 +2416,8 @@
         }
         var colL = 22;
         var colN = 6;
+        var n1 = firstName(pb1);
+        var n2 = firstName(pb2);
         var dd1 = s1.totalDiceSpent || 0;
         var dd2 = s2.totalDiceSpent || 0;
         var imp1 = (s1.totalDamageDealt || 0) + (s1.totalHealing || 0);
@@ -2283,18 +2430,16 @@
         var cards2 = s2.cardsPlayed || 0;
         var dmgHealCard1 = cards1 > 0 ? (imp1 / cards1).toFixed(2) : '—';
         var dmgHealCard2 = cards2 > 0 ? (imp2 / cards2).toFixed(2) : '—';
+        var carry1 = s1.carryoverValue || 0;
+        var carry2 = s2.carryoverValue || 0;
+        var netCarry1 = carry1 - carry2;
+        var netCarry2 = carry2 - carry1;
         out += '```\n';
-        out += pad('', colL) + pad(pb1, colN) + pad(pb2, colN) + '\n';
+        out += pad('', colL) + pad(n1, colN) + pad(n2, colN) + '\n';
         out += pad('Blood points', colL) + pad(bloodPts1, colN) + pad(bloodPts2, colN) + '\n';
         out += pad('Dmg+heal/dice', colL) + pad(r1, colN) + pad(r2, colN) + '\n';
         out += pad('Dmg+heal/card', colL) + pad(dmgHealCard1, colN) + pad(dmgHealCard2, colN) + '\n';
-        out += pad('Final health', colL) + pad(finalH1, colN) + pad(finalH2, colN) + '\n';
-        out += pad('Damage dealt', colL) + pad(s1.totalDamageDealt || 0, colN) + pad(s2.totalDamageDealt || 0, colN) + '\n';
-        out += pad('Healing', colL) + pad(s1.totalHealing || 0, colN) + pad(s2.totalHealing || 0, colN) + '\n';
-        out += pad('Attacks', colL) + pad(s1.totalAttacks || 0, colN) + pad(s2.totalAttacks || 0, colN) + '\n';
-        out += pad('Dice spent', colL) + pad(s1.totalDiceSpent || 0, colN) + pad(s2.totalDiceSpent || 0, colN) + '\n';
-        out += pad('Cards played', colL) + pad(s1.cardsPlayed || 0, colN) + pad(s2.cardsPlayed || 0, colN) + '\n';
-        out += pad('Turns in control', colL) + pad(turnsInControl1, colN) + pad(turnsInControl2, colN) + '\n';
+        out += pad('Net carryover value', colL) + pad(netCarry1, colN) + pad(netCarry2, colN) + '\n';
         out += '```\n\n';
 
         if (hypestIdx >= 0 && hypestSwing > 0) {
@@ -2305,7 +2450,7 @@
           var prevAdv = series.totalAdvantage[hypestIdx - 1] || 0;
           var currAdv = series.totalAdvantage[hypestIdx] || 0;
           var swingAmt = currAdv - prevAdv;
-          var toward = swingAmt > 0 ? pb1 : pb2;
+          var toward = swingAmt > 0 ? n1 : n2;
           var sit = series.situation[hypestIdx];
           var sitText = sit ? sit.desc : '';
 
