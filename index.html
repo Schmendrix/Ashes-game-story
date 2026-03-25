@@ -867,6 +867,24 @@
           pairChatLines = [];
         }
 
+        // True if a matching PB receive line appears soon after a "deal damage to PB" line, before another damage sequence begins.
+        // Stops scanning at attacks / resolving / PB destroyed / another deal-to-same-PB so we do not defer to a later receive meant for a different event.
+        function pbReceiveLineSoon(lines, lineIdx, escapedPb, maxAhead) {
+          var receiveRe = new RegExp('^' + escapedPb + '\\s+(?:receives|takes)\\s+\\d+\\s+(?:fatigue\\s+)?damage', 'i');
+          var anotherDealRe = new RegExp('deal\\s+\\d+\\s+damage\\s+to\\s+' + escapedPb, 'i');
+          var lim = Math.min(lines.length, lineIdx + 1 + (maxAhead || 25));
+          for (var li = lineIdx + 1; li < lim; li++) {
+            var ln = lines[li];
+            if (receiveRe.test(ln)) return true;
+            if (/has won the game|Game finished/i.test(ln)) return false;
+            if (new RegExp('^' + escapedPb + '\\s+is destroyed', 'i').test(ln)) return false;
+            if (/\battacks\s+.+\s+with\s+\d+\s+units?/i.test(ln)) return false;
+            if (/^>\s*Resolving\s+attack\s+from/i.test(ln)) return false;
+            if (anotherDealRe.test(ln)) return false;
+          }
+          return false;
+        }
+
         // Pass 2: parse events turn by turn
         for (var i = 0; i < lines.length; i++) {
           var line = lines[i];
@@ -991,9 +1009,8 @@
               var escaped1 = pbName1.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
               var dealMatch = line.match(new RegExp('deal\\s+(\\d+)\\s+damage\\s+to\\s+' + escaped1, 'i'));
               if (dealMatch && !/prevent(?:ed)?/i.test(line)) {
-                // Skip if next line is "PBName receives N damage" — Pattern A will handle it to avoid double-counting
-                var nextLineA2 = i + 1 < lines.length ? lines[i + 1] : '';
-                if (new RegExp('^' + escaped1 + '\\s+(?:receives|takes)\\s+\\d+\\s+(?:fatigue\\s+)?damage', 'i').test(nextLineA2)) {
+                // Skip if a receive line follows soon (even with chat in between) — Pattern A will apply there
+                if (pbReceiveLineSoon(lines, i, escaped1, 25)) {
                   break;
                 }
                 // Skip if damage was redirected to a unit
@@ -1041,13 +1058,17 @@
                   }
                 }
                 if (applyToPhoenixborn) {
-                  health[damagedPlayer] = Math.max(0, health[damagedPlayer] - oppDealAmt);
-                  if (stats[dealerName]) {
-                    stats[dealerName].totalDamageDealt += oppDealAmt;
-                    if (attackedThisTurn[dealerName]) stats[dealerName].attackDamageDealt += oppDealAmt;
+                  var oppPbEsc = (playerToPb[damagedPlayer] || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  var deferOppDealToReceive = oppPbEsc && pbReceiveLineSoon(lines, i, oppPbEsc, 25);
+                  if (!deferOppDealToReceive) {
+                    health[damagedPlayer] = Math.max(0, health[damagedPlayer] - oppDealAmt);
+                    if (stats[dealerName]) {
+                      stats[dealerName].totalDamageDealt += oppDealAmt;
+                      if (attackedThisTurn[dealerName]) stats[dealerName].attackDamageDealt += oppDealAmt;
+                    }
+                    pairDamageDealt[dealerName] = (pairDamageDealt[dealerName] || 0) + oppDealAmt;
+                    pbDamageLineHandled = true;
                   }
-                  pairDamageDealt[dealerName] = (pairDamageDealt[dealerName] || 0) + oppDealAmt;
-                  pbDamageLineHandled = true;
                 }
               }
             }
@@ -1104,6 +1125,17 @@
               health[healedPlayer] = Math.min(maxLife, health[healedPlayer] + healAmt);
               if (stats[healedPlayer]) stats[healedPlayer].totalHealing += healAmt;
               break;
+            }
+          }
+
+          // Mass Heal: log says "uses Mass Heal to take a chosen action" without naming the PB — always heals 1 from caster's PB
+          var massHealMatch = line.match(/^(\S+)\s+uses\s+Mass Heal\s+to\s+take\s+a\s+chosen\s+action/i);
+          if (massHealMatch) {
+            var mhPlayer = massHealMatch[1];
+            if (playerNames.indexOf(mhPlayer) !== -1) {
+              var maxLifeMh = mhPlayer === p1 ? life1 : life2;
+              health[mhPlayer] = Math.min(maxLifeMh, (health[mhPlayer] || 0) + 1);
+              if (stats[mhPlayer]) stats[mhPlayer].totalHealing += 1;
             }
           }
 
